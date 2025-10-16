@@ -29,6 +29,23 @@ KIRBUK_BROWSER_IDENTIFIER = "kirbuk_browser_tool-l2a6PWdtMy"
 S3_BUCKET = "sveder-kirbuk"
 S3_STAGING_PREFIX = "staging_area"
 
+SYSTEM_PROMPT = """You are an agent that goes over SaaS products and helps create demo videos.
+You will be given a website URL and instruction and you will need to explore the website and understand
+what is the user flow through it and main functionality.
+
+Your response should be a script for what to do on website to best showcase the main features.
+
+More rules:
+1. If the site throws an error, note it but continue your exploration.
+2. If you find settings - look at them but do not try to change settings.
+3. If provided with a username and password, use it to login to the site. Do not try to create a new account.
+4. Dismiss any cookie popups with allow all option or similar.
+5. If you seem stuck go back to the starting page and start over, this time only following the main path.
+6. If there is a documentation page - look at main page only and don't read all the docs. Definitely don't search the logs.
+7. Don't stop with errors ever. Instead restart and try again once and if not just stop regularly with suitable message.
+
+"""
+
 ci_sessions = {}
 current_session = None
 
@@ -102,7 +119,7 @@ def invoke(payload, context):
 
         session_id = getattr(context, 'session_id', 'default')
         current_session = session_id
-        print("OMG I'm here from server!")
+
         memory_config = AgentCoreMemoryConfig(
             memory_id=MEMORY_ID,
             session_id=session_id,
@@ -121,14 +138,14 @@ def invoke(payload, context):
         agent = Agent(
             model=MODEL_ID,
             session_manager=AgentCoreMemorySessionManager(memory_config, REGION),
-            system_prompt="You are a helpful assistant. Use tools when appropriate.",
+            system_prompt=SYSTEM_PROMPT,
             tools=[browser_tool.browser]
         )
 
-#        result = agent(payload.get("prompt", ""))
+        prompt = f"Visit website {payload['product_url']}. Additional user instructions: {payload['directions']}"
+        result = agent(prompt)
 
         browser_tool.close_platform()
-        return {"response": "for now don't run anything just debugging"}
         return {"response": result.message.get('content', [{}])[0].get('text', str(result))}
 
     except Exception as e:
