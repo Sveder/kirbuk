@@ -6,26 +6,244 @@ def hello_world(request):
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Hello World</title>
+        <title>Kirbuk - Automated SaaS Product Videos</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
+            * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
+
             body {
                 background-color: #8B4513;
-                color: white;
-                font-family: Arial, sans-serif;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                height: 100vh;
-                margin: 0;
+                color: #FFF8DC;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+                min-height: 100vh;
+                padding: 40px 20px;
             }
+
+            .container {
+                max-width: 600px;
+                margin: 0 auto;
+            }
+
             h1 {
-                font-size: 48px;
-                text-align: center;
+                font-size: 2.5rem;
+                margin-bottom: 1rem;
+                color: #FFF8DC;
+            }
+
+            .tagline {
+                font-size: 1.1rem;
+                margin-bottom: 2rem;
+                opacity: 0.9;
+                line-height: 1.5;
+            }
+
+            .form-card {
+                background-color: #A0522D;
+                padding: 2rem;
+                border-radius: 8px;
+                border: 2px solid #D2691E;
+            }
+
+            .form-group {
+                margin-bottom: 1.5rem;
+            }
+
+            label {
+                display: block;
+                margin-bottom: 0.5rem;
+                font-weight: 500;
+                color: #FFF8DC;
+            }
+
+            input[type="email"],
+            input[type="text"],
+            input[type="url"],
+            input[type="password"],
+            textarea {
+                width: 100%;
+                padding: 0.75rem;
+                border: 2px solid #D2691E;
+                border-radius: 4px;
+                background-color: #DEB887;
+                color: #3E2723;
+                font-size: 1rem;
+                font-family: inherit;
+            }
+
+            input[type="email"]:focus,
+            input[type="text"]:focus,
+            input[type="url"]:focus,
+            input[type="password"]:focus,
+            textarea:focus {
+                outline: none;
+                border-color: #F4A460;
+                background-color: #F5DEB3;
+            }
+
+            textarea {
+                resize: vertical;
+                min-height: 100px;
+            }
+
+            .checkbox-group {
+                display: flex;
+                align-items: center;
+                gap: 0.75rem;
+                padding: 1rem;
+                background-color: #8B6914;
+                border-radius: 4px;
+                border: 2px solid #D2691E;
+            }
+
+            input[type="checkbox"] {
+                width: 20px;
+                height: 20px;
+                cursor: pointer;
+                accent-color: #F4A460;
+            }
+
+            .checkbox-label {
+                margin: 0;
+                font-weight: 500;
+                cursor: pointer;
+            }
+
+            .submit-btn {
+                width: 100%;
+                padding: 1rem;
+                background-color: #D2691E;
+                color: #FFF8DC;
+                border: none;
+                border-radius: 4px;
+                font-size: 1.1rem;
+                font-weight: 600;
+                cursor: pointer;
+                transition: background-color 0.2s;
+            }
+
+            .submit-btn:hover {
+                background-color: #CD853F;
+            }
+
+            .submit-btn:active {
+                background-color: #B8860B;
+            }
+
+            .helper-text {
+                font-size: 0.85rem;
+                opacity: 0.8;
+                margin-top: 0.25rem;
+            }
+
+            .credentials-group {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 1rem;
+            }
+
+            @media (max-width: 640px) {
+                h1 {
+                    font-size: 2rem;
+                }
+
+                .form-card {
+                    padding: 1.5rem;
+                }
+
+                .credentials-group {
+                    grid-template-columns: 1fr;
+                }
             }
         </style>
     </head>
     <body>
-        <h1>Hello World</h1>
+        <div class="container">
+            <h1>Kirbuk</h1>
+            <p class="tagline">
+                Get an automated, narrated product video for your SaaS.
+                Just provide your URL and we'll handle the rest.
+            </p>
+
+            <div class="form-card">
+                <form method="POST" action="/submit">
+                    <div class="form-group">
+                        <label for="email">Your Email</label>
+                        <input
+                            type="email"
+                            id="email"
+                            name="email"
+                            required
+                            placeholder="you@example.com"
+                        >
+                        <p class="helper-text">We'll send your video here</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="product_url">SaaS Product URL</label>
+                        <input
+                            type="url"
+                            id="product_url"
+                            name="product_url"
+                            required
+                            placeholder="https://yourproduct.com"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="directions">Additional Directions (Optional)</label>
+                        <textarea
+                            id="directions"
+                            name="directions"
+                            placeholder="Any specific areas you'd like us to focus on or features to highlight..."
+                        ></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Test User Credentials (Optional)</label>
+                        <div class="credentials-group">
+                            <div>
+                                <input
+                                    type="text"
+                                    id="test_username"
+                                    name="test_username"
+                                    placeholder="Username"
+                                >
+                            </div>
+                            <div>
+                                <input
+                                    type="password"
+                                    id="test_password"
+                                    name="test_password"
+                                    placeholder="Password"
+                                >
+                            </div>
+                        </div>
+                        <p class="helper-text">Provide test credentials if your product requires login</p>
+                    </div>
+
+                    <div class="form-group">
+                        <div class="checkbox-group">
+                            <input
+                                type="checkbox"
+                                id="roast_mode"
+                                name="roast_mode"
+                            >
+                            <label for="roast_mode" class="checkbox-label">
+                                Roast Mode - Make it spicy
+                            </label>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="submit-btn">
+                        Generate My Video
+                    </button>
+                </form>
+            </div>
+        </div>
     </body>
     </html>
     """
