@@ -43,7 +43,6 @@ More rules:
 5. If you seem stuck go back to the starting page and start over, this time only following the main path.
 6. If there is a documentation page - look at main page only and don't read all the docs. Definitely don't search the logs.
 7. Don't stop with errors ever. Instead restart and try again once and if not just stop regularly with suitable message.
-
 """
 
 ci_sessions = {}
@@ -142,11 +141,17 @@ def invoke(payload, context):
             tools=[browser_tool.browser]
         )
 
-        prompt = f"Visit website {payload['product_url']}. Additional user instructions: {payload['directions']}"
+        prompt = f"Visit website {payload['product_url']}. Additional user instructions: {payload['directions']}."
+        if payload.get('test_username') and payload.get('test_password'):
+            prompt += f" Use username/email '{payload['test_username']}' and password '{payload['test_password']}' to login to the site."
+        
         result = agent(prompt)
 
         browser_tool.close_platform()
-        return {"response": result.message.get('content', [{}])[0].get('text', str(result))}
+
+        response = result.message.get('content', [{}])[0].get('text', str(result))
+        print(f"Response: {response}")
+        return {"response": response}
 
     except Exception as e:
         # Capture exception in Sentry with context
