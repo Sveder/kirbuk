@@ -4,10 +4,47 @@ from django.views.decorators.csrf import csrf_exempt
 import json
 import uuid
 import boto3
+import threading
 
 # Agent configuration
 AGENT_ARN = "arn:aws:bedrock-agentcore:eu-central-1:800622328366:runtime/agentcore_starter_strands-V5kqR7Ap5a"
 AWS_REGION = "eu-central-1"
+
+
+def invoke_agent_async(data, submission_id):
+    """Invoke the agent asynchronously in a background thread"""
+    try:
+        agent_core_client = boto3.client('bedrock-agentcore', region_name=AWS_REGION)
+
+        # Use submission_id as session_id for tracking (must be 33+ chars)
+        # The UUID is 36 chars so it meets the requirement
+        session_id = submission_id
+
+        # Prepare the payload - send data directly without "input" wrapper
+        payload = json.dumps(data)
+
+        print(f"Invoking agent asynchronously with session_id: {session_id}")
+        print(f"Payload: {payload}")
+
+        # Invoke the agent
+        response = agent_core_client.invoke_agent_runtime(
+            agentRuntimeArn=AGENT_ARN,
+            runtimeSessionId=session_id,
+            payload=payload,
+            qualifier="DEFAULT"
+        )
+
+        # Read and parse the response
+        response_body = response['response'].read()
+        response_data = json.loads(response_body)
+
+        print(f"Agent invoked successfully. Response: {response_data}")
+
+    except Exception as agent_error:
+        print(f"Error invoking agent asynchronously: {agent_error}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+
 
 def hello_world(request):
     return render(request, 'index.html')
@@ -41,45 +78,18 @@ def submit_form(request):
         print(f"Roast Mode: {data.get('roast_mode')}")
         print("=" * 80)
 
-        # Invoke the agent
-        try:
-            agent_core_client = boto3.client('bedrock-agentcore', region_name=AWS_REGION)
+        # Start agent invocation in background thread
+        thread = threading.Thread(target=invoke_agent_async, args=(data, submission_id))
+        thread.daemon = True  # Daemon thread will not block app shutdown
+        thread.start()
 
-            # Use submission_id as session_id for tracking (must be 33+ chars)
-            # The UUID is 36 chars so it meets the requirement
-            session_id = submission_id
+        print(f"Agent invocation started asynchronously for submission {submission_id}")
 
-            # Prepare the payload - send data directly without "input" wrapper
-            payload = json.dumps(data)
-
-            print(f"Invoking agent with session_id: {session_id}")
-            print(f"Payload: {payload}")
-
-            # Invoke the agent
-            response = agent_core_client.invoke_agent_runtime(
-                agentRuntimeArn=AGENT_ARN,
-                runtimeSessionId=session_id,
-                payload=payload,
-                qualifier="DEFAULT"
-            )
-
-            # Read and parse the response
-            response_body = response['response'].read()
-            response_data = json.loads(response_body)
-
-            print(f"Agent invoked successfully. Response: {response_data}")
-
-        except Exception as agent_error:
-            print(f"Error invoking agent: {agent_error}")
-            import traceback
-            print(f"Traceback: {traceback.format_exc()}")
-            # Continue anyway - we'll still return success to user
-            # but log the error for debugging
-
+        # Return immediately without waiting for agent
         return JsonResponse({
             'success': True,
             'submission_id': submission_id,
-            'message': 'Form submitted successfully and agent invoked'
+            'message': 'Form submitted successfully, agent processing in background'
         })
 
     except json.JSONDecodeError:
