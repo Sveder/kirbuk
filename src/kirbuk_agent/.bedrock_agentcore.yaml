@@ -23,7 +23,7 @@ agents:
     bedrock_agentcore:
       agent_id: agentcore_starter_strands-V5kqR7Ap5a
       agent_arn: arn:aws:bedrock-agentcore:eu-central-1:800622328366:runtime/agentcore_starter_strands-V5kqR7Ap5a
-      agent_session_id: b0a5b143-6712-451e-bec3-4ab68d38c5ec
+      agent_session_id: null
     codebuild:
       project_name: bedrock-agentcore-agentcore_starter_strands-builder
       execution_role: arn:aws:iam::800622328366:role/AmazonBedrockAgentCoreSDKCodeBuild-eu-central-1-9c0804ec0c

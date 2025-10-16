@@ -3,3 +3,4 @@ bedrock-agentcore
 strands-agents-tools
 playwright
 nest-asyncio
+sentry-sdk

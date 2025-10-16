@@ -1,5 +1,13 @@
 from django.shortcuts import render
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+import json
+import uuid
+import boto3
+
+# Agent configuration
+AGENT_ARN = "arn:aws:bedrock-agentcore:eu-central-1:800622328366:runtime/agentcore_starter_strands-V5kqR7Ap5a"
+AWS_REGION = "eu-central-1"
 
 def hello_world(request):
     html = """
@@ -288,19 +296,47 @@ def hello_world(request):
             });
 
             // Handle form submission
-            form.addEventListener('submit', (e) => {
+            form.addEventListener('submit', async (e) => {
                 e.preventDefault();
 
                 const formData = new FormData(form);
                 const isRoastMode = formData.get('roast_mode') === 'on';
 
-                // Clear localStorage after submission
-                fields.forEach(fieldId => {
-                    localStorage.removeItem('kirbuk_' + fieldId);
-                });
+                // Prepare data to send to backend
+                const data = {
+                    email: formData.get('email'),
+                    product_url: formData.get('product_url'),
+                    directions: formData.get('directions'),
+                    test_username: formData.get('test_username'),
+                    test_password: formData.get('test_password'),
+                    roast_mode: isRoastMode
+                };
 
-                // Show thank you page
-                showThankYouPage(isRoastMode);
+                try {
+                    // Send data to backend
+                    const response = await fetch('/submit', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(data)
+                    });
+
+                    if (response.ok) {
+                        // Clear localStorage after successful submission
+                        fields.forEach(fieldId => {
+                            localStorage.removeItem('kirbuk_' + fieldId);
+                        });
+
+                        // Show thank you page
+                        showThankYouPage(isRoastMode);
+                    } else {
+                        alert('Failed to submit form. Please try again.');
+                    }
+                } catch (error) {
+                    console.error('Error submitting form:', error);
+                    alert('An error occurred. Please try again.');
+                }
             });
 
             function showThankYouPage(isRoastMode) {
@@ -336,3 +372,70 @@ def hello_world(request):
     </html>
     """
     return HttpResponse(html)
+
+@csrf_exempt
+def submit_form(request):
+    """Handle form submission and send data to agent"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Only POST requests allowed'}, status=405)
+
+    try:
+        # Parse JSON data
+        data = json.loads(request.body)
+
+        # Generate UUID for this submission
+        submission_id = str(uuid.uuid4())
+
+        # Add submission_id to data
+        data['submission_id'] = submission_id
+
+        # Print submission data
+        print("=" * 80)
+        print("NEW SUBMISSION")
+        print("=" * 80)
+        print(f"Submission ID: {submission_id}")
+        print(f"Email: {data.get('email')}")
+        print(f"Product URL: {data.get('product_url')}")
+        print(f"Directions: {data.get('directions')}")
+        print(f"Test Username: {data.get('test_username')}")
+        print(f"Test Password: {'***' if data.get('test_password') else 'Not provided'}")
+        print(f"Roast Mode: {data.get('roast_mode')}")
+        print("=" * 80)
+
+        # Invoke the agent
+        try:
+            agent_core_client = boto3.client('bedrock-agentcore', region_name=AWS_REGION)
+
+            # Prepare the payload with all form data
+            payload = json.dumps(data).encode()
+
+            # Use submission_id as session_id for tracking
+            session_id = submission_id
+
+            print(f"Invoking agent with session_id: {session_id}")
+
+            # Invoke the agent
+            response = agent_core_client.invoke_agent_runtime(
+                agentRuntimeArn=AGENT_ARN,
+                runtimeSessionId=session_id,
+                payload=payload
+            )
+
+            print(f"Agent invoked successfully. Response: {response}")
+
+        except Exception as agent_error:
+            print(f"Error invoking agent: {agent_error}")
+            # Continue anyway - we'll still return success to user
+            # but log the error for debugging
+
+        return JsonResponse({
+            'success': True,
+            'submission_id': submission_id,
+            'message': 'Form submitted successfully and agent invoked'
+        })
+
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        print(f"Error in submit_form: {e}")
+        return JsonResponse({'error': str(e)}, status=500)

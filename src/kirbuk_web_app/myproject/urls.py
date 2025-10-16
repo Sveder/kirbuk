@@ -15,12 +15,13 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.urls import path
-from kirbuk.views import hello_world
+from kirbuk.views import hello_world, submit_form
 
 def trigger_error(request):
     division_by_zero = 1 / 0
 
 urlpatterns = [
     path('', hello_world, name='hello_world'),
+    path('submit', submit_form, name='submit_form'),
     path('sentry-debug/', trigger_error),
 ]
