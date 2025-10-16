@@ -38,8 +38,8 @@ def save_payload_to_s3(payload, submission_id):
     try:
         s3_client = boto3.client('s3', region_name=REGION)
 
-        # Create the S3 key: staging_area/<uuid>.json
-        s3_key = f"{S3_STAGING_PREFIX}/{submission_id}.json"
+        # Create the S3 key: staging_area/<uuid>/<uuid>.json
+        s3_key = f"{S3_STAGING_PREFIX}/{submission_id}/{submission_id}.json"
 
         # Convert payload to JSON string
         json_data = json.dumps(payload, indent=2)
