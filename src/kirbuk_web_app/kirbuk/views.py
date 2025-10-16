@@ -244,6 +244,94 @@ def hello_world(request):
                 </form>
             </div>
         </div>
+
+        <script>
+            // Auto-save form data to localStorage
+            const form = document.querySelector('form');
+            const fields = ['email', 'product_url', 'directions', 'test_username', 'test_password', 'roast_mode'];
+
+            // Load saved values on page load
+            window.addEventListener('DOMContentLoaded', () => {
+                fields.forEach(fieldId => {
+                    const element = document.getElementById(fieldId);
+                    const savedValue = localStorage.getItem('kirbuk_' + fieldId);
+
+                    if (savedValue !== null && element) {
+                        if (element.type === 'checkbox') {
+                            element.checked = savedValue === 'true';
+                        } else {
+                            element.value = savedValue;
+                        }
+                    }
+                });
+            });
+
+            // Save values as user types
+            fields.forEach(fieldId => {
+                const element = document.getElementById(fieldId);
+                if (element) {
+                    element.addEventListener('input', () => {
+                        if (element.type === 'checkbox') {
+                            localStorage.setItem('kirbuk_' + fieldId, element.checked);
+                        } else {
+                            localStorage.setItem('kirbuk_' + fieldId, element.value);
+                        }
+                    });
+
+                    // For checkbox, also listen to change event
+                    if (element.type === 'checkbox') {
+                        element.addEventListener('change', () => {
+                            localStorage.setItem('kirbuk_' + fieldId, element.checked);
+                        });
+                    }
+                }
+            });
+
+            // Handle form submission
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+
+                const formData = new FormData(form);
+                const isRoastMode = formData.get('roast_mode') === 'on';
+
+                // Clear localStorage after submission
+                fields.forEach(fieldId => {
+                    localStorage.removeItem('kirbuk_' + fieldId);
+                });
+
+                // Show thank you page
+                showThankYouPage(isRoastMode);
+            });
+
+            function showThankYouPage(isRoastMode) {
+                const container = document.querySelector('.container');
+
+                let message = `
+                    <div style="text-align: center;">
+                        <h1 style="font-size: 3rem; margin-bottom: 1.5rem;">Thank You!</h1>
+                        <div class="form-card">
+                            <p style="font-size: 1.3rem; margin-bottom: 1rem;">
+                                We're preparing your video now.
+                            </p>`;
+
+                if (isRoastMode) {
+                    message += `
+                            <p style="font-size: 1.1rem; opacity: 0.9; margin-top: 1.5rem; font-style: italic;">
+                                Hope your product can handle the heat. We're about to roast it like a marshmallow over a campfire.
+                            </p>`;
+                }
+
+                message += `
+                            <p style="font-size: 1rem; opacity: 0.8; margin-top: 2rem;">
+                                You'll receive your video via email shortly.
+                            </p>
+                        </div>
+                    </div>
+                `;
+
+                container.innerHTML = message;
+            }
+        </script>
     </body>
     </html>
     """
