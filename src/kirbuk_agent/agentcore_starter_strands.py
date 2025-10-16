@@ -76,6 +76,30 @@ def save_payload_to_s3(payload, submission_id):
         raise
 
 
+def save_script_to_s3(script, submission_id):
+    """Save the script to S3 in the staging area"""
+    try:
+        s3_client = boto3.client('s3', region_name=REGION)
+
+        # Create the S3 key: staging_area/<uuid>/script.txt
+        s3_key = f"{S3_STAGING_PREFIX}/{submission_id}/script.txt"
+
+        # Upload to S3
+        s3_client.put_object(
+            Bucket=S3_BUCKET,
+            Key=s3_key,
+            Body=script,
+            ContentType='text/plain'
+        )
+
+        print(f"Successfully saved script to s3://{S3_BUCKET}/{s3_key}")
+        return s3_key
+
+    except Exception as e:
+        print(f"Error saving script to S3: {e}")
+        raise
+
+
 @app.entrypoint
 def invoke(payload, context):
     global current_session
@@ -151,6 +175,12 @@ def invoke(payload, context):
 
         response = result.message.get('content', [{}])[0].get('text', str(result))
         print(f"Response: {response}")
+
+        # Save script to S3 before returning
+        if submission_id and response:
+            script_s3_key = save_script_to_s3(response, submission_id)
+            print(f"Script saved to S3: {script_s3_key}")
+
         return {"response": response}
 
     except Exception as e:
