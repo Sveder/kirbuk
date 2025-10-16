@@ -9,6 +9,8 @@ import threading
 # Agent configuration
 AGENT_ARN = "arn:aws:bedrock-agentcore:eu-central-1:800622328366:runtime/agentcore_starter_strands-V5kqR7Ap5a"
 AWS_REGION = "eu-central-1"
+S3_BUCKET = "sveder-kirbuk"
+S3_STAGING_PREFIX = "staging_area"
 
 
 def invoke_agent_async(data, submission_id):
@@ -96,4 +98,48 @@ def submit_form(request):
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
     except Exception as e:
         print(f"Error in submit_form: {e}")
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@csrf_exempt
+def check_status(request, submission_id):
+    """Check the status of a submission by looking at S3"""
+    try:
+        s3_client = boto3.client('s3', region_name=AWS_REGION)
+
+        # Define the S3 paths to check
+        submission_path = f"{S3_STAGING_PREFIX}/{submission_id}"
+        json_key = f"{submission_path}/{submission_id}.json"
+        script_key = f"{submission_path}/script.txt"
+
+        status = {
+            'submission_id': submission_id,
+            'json_created': False,
+            'script_created': False,
+            'script_content': None
+        }
+
+        # Check if JSON file exists
+        try:
+            s3_client.head_object(Bucket=S3_BUCKET, Key=json_key)
+            status['json_created'] = True
+        except s3_client.exceptions.NoSuchKey:
+            pass
+        except Exception as e:
+            print(f"Error checking JSON file: {e}")
+
+        # Check if script file exists and get its content
+        try:
+            response = s3_client.get_object(Bucket=S3_BUCKET, Key=script_key)
+            status['script_created'] = True
+            status['script_content'] = response['Body'].read().decode('utf-8')
+        except s3_client.exceptions.NoSuchKey:
+            pass
+        except Exception as e:
+            print(f"Error checking script file: {e}")
+
+        return JsonResponse(status)
+
+    except Exception as e:
+        print(f"Error in check_status: {e}")
         return JsonResponse({'error': str(e)}, status=500)

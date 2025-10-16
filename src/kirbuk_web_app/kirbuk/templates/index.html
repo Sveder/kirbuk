@@ -310,13 +310,16 @@
                 });
 
                 if (response.ok) {
+                    const result = await response.json();
+                    const submissionId = result.submission_id;
+
                     // Clear localStorage after successful submission
                     fields.forEach(fieldId => {
                         localStorage.removeItem('kirbuk_' + fieldId);
                     });
 
-                    // Show thank you page
-                    showThankYouPage(isRoastMode);
+                    // Show thank you page with status checking
+                    showThankYouPage(isRoastMode, submissionId);
                 } else {
                     alert('Failed to submit form. Please try again.');
                 }
@@ -326,7 +329,7 @@
             }
         });
 
-        function showThankYouPage(isRoastMode) {
+        function showThankYouPage(isRoastMode, submissionId) {
             const container = document.querySelector('.container');
 
             let message = `
@@ -348,11 +351,61 @@
                         <p style="font-size: 1rem; opacity: 0.8; margin-top: 2rem;">
                             You'll receive your video via email shortly.
                         </p>
+                        <div id="status-updates" style="margin-top: 2rem; padding: 1rem; background-color: rgba(0,0,0,0.2); border-radius: 4px;">
+                            <h3 style="margin-bottom: 1rem;">Status</h3>
+                            <p id="json-status">📝 Waiting for payload...</p>
+                            <p id="script-status" style="margin-top: 0.5rem;">📜 Waiting for script...</p>
+                            <div id="script-content" style="margin-top: 1rem; display: none;">
+                                <h4 style="margin-bottom: 0.5rem;">Script Content:</h4>
+                                <pre style="background-color: rgba(0,0,0,0.3); padding: 1rem; border-radius: 4px; text-align: left; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;"></pre>
+                            </div>
+                        </div>
                     </div>
                 </div>
             `;
 
             container.innerHTML = message;
+
+            // Start polling for status updates
+            if (submissionId) {
+                checkStatus(submissionId);
+            }
+        }
+
+        function checkStatus(submissionId) {
+            const interval = setInterval(async () => {
+                try {
+                    const response = await fetch(`/status/${submissionId}`);
+                    if (response.ok) {
+                        const status = await response.json();
+
+                        // Update JSON status
+                        const jsonStatusEl = document.getElementById('json-status');
+                        if (status.json_created) {
+                            jsonStatusEl.textContent = '✅ Payload received and saved';
+                            jsonStatusEl.style.color = '#90EE90';
+                        }
+
+                        // Update script status
+                        const scriptStatusEl = document.getElementById('script-status');
+                        const scriptContentDiv = document.getElementById('script-content');
+
+                        if (status.script_created && status.script_content) {
+                            scriptStatusEl.textContent = '✅ Script created';
+                            scriptStatusEl.style.color = '#90EE90';
+
+                            // Show script content
+                            scriptContentDiv.style.display = 'block';
+                            scriptContentDiv.querySelector('pre').textContent = status.script_content;
+
+                            // Stop polling once script is created
+                            clearInterval(interval);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error checking status:', error);
+                }
+            }, 2000); // Check every 2 seconds
         }
     </script>
 </body>
