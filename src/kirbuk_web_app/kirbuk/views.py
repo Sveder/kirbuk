@@ -49,11 +49,8 @@ def submit_form(request):
             # The UUID is 36 chars so it meets the requirement
             session_id = submission_id
 
-            # Prepare the payload in the correct format with "input" wrapper
-            payload_dict = {
-                "input": data
-            }
-            payload = json.dumps(payload_dict)
+            # Prepare the payload - send data directly without "input" wrapper
+            payload = json.dumps(data)
 
             print(f"Invoking agent with session_id: {session_id}")
             print(f"Payload: {payload}")
