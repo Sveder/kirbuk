@@ -5,10 +5,7 @@ import os
 import json
 import boto3
 import sentry_sdk
-from strands import Agent, tool
-from bedrock_agentcore.memory.integrations.strands.config import AgentCoreMemoryConfig, RetrievalConfig
-from bedrock_agentcore.memory.integrations.strands.session_manager import AgentCoreMemorySessionManager
-from bedrock_agentcore.tools.code_interpreter_client import CodeInterpreter
+from strands import Agent
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 
 from strands_tools.browser import AgentCoreBrowser
@@ -517,32 +514,19 @@ def invoke(payload, context):
         else:
             print("Warning: No submission_id found in payload, skipping S3 save")
 
-        if not MEMORY_ID:
-            return {"error": "Memory not configured"}
-
-        actor_id = context.headers.get('X-Amzn-Bedrock-AgentCore-Runtime-Custom-Actor-Id', 'user') if hasattr(context, 'headers') else 'user'
-
+        # Note: Memory session manager removed to avoid throttling issues
+        # Each job is independent and doesn't need persistent memory
         session_id = getattr(context, 'session_id', 'default')
         current_session = session_id
-
-        memory_config = AgentCoreMemoryConfig(
-            memory_id=MEMORY_ID,
-            session_id=session_id,
-            actor_id=actor_id,
-            retrieval_config={
-                f"/users/{actor_id}/facts": RetrievalConfig(top_k=3, relevance_score=0.5),
-                f"/users/{actor_id}/preferences": RetrievalConfig(top_k=3, relevance_score=0.5)
-            }
-        )
 
         browser_tool = AgentCoreBrowser(
             region=REGION,
             identifier=KIRBUK_BROWSER_IDENTIFIER
         )
 
+        # Create agent without memory session manager to avoid throttling
         agent = Agent(
             model=MODEL_ID,
-            session_manager=AgentCoreMemorySessionManager(memory_config, REGION),
             system_prompt=SYSTEM_PROMPT,
             tools=[browser_tool.browser]
         )
@@ -659,8 +643,7 @@ def invoke(payload, context):
         # Capture exception in Sentry with context
         sentry_sdk.set_context("payload", payload)
         sentry_sdk.set_context("session", {
-            "session_id": current_session,
-            "actor_id": actor_id if 'actor_id' in locals() else 'unknown'
+            "session_id": current_session
         })
         sentry_sdk.capture_exception(e)
 
