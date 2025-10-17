@@ -1,4 +1,4 @@
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 import json
@@ -101,6 +101,11 @@ def submit_form(request):
         return JsonResponse({'error': str(e)}, status=500)
 
 
+def submission_status(request, submission_id):
+    """Render the status page for a specific submission"""
+    return render(request, 'status.html', {'submission_id': submission_id})
+
+
 @csrf_exempt
 def check_status(request, submission_id):
     """Check the status of a submission by looking at S3"""
@@ -111,12 +116,15 @@ def check_status(request, submission_id):
         submission_path = f"{S3_STAGING_PREFIX}/{submission_id}"
         json_key = f"{submission_path}/{submission_id}.json"
         script_key = f"{submission_path}/script.txt"
+        playwright_key = f"{submission_path}/playwright.py"
 
         status = {
             'submission_id': submission_id,
             'json_created': False,
             'script_created': False,
-            'script_content': None
+            'script_content': None,
+            'playwright_created': False,
+            'playwright_content': None
         }
 
         # Check if JSON file exists
@@ -137,6 +145,16 @@ def check_status(request, submission_id):
             pass
         except Exception as e:
             print(f"Error checking script file: {e}")
+
+        # Check if Playwright file exists and get its content
+        try:
+            response = s3_client.get_object(Bucket=S3_BUCKET, Key=playwright_key)
+            status['playwright_created'] = True
+            status['playwright_content'] = response['Body'].read().decode('utf-8')
+        except s3_client.exceptions.NoSuchKey:
+            pass
+        except Exception as e:
+            print(f"Error checking Playwright file: {e}")
 
         return JsonResponse(status)
 

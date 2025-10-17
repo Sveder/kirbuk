@@ -100,6 +100,81 @@ def save_script_to_s3(script, submission_id):
         raise
 
 
+def save_playwright_to_s3(playwright_code, submission_id):
+    """Save the Playwright script to S3 in the staging area"""
+    try:
+        s3_client = boto3.client('s3', region_name=REGION)
+
+        # Create the S3 key: staging_area/<uuid>/playwright.py
+        s3_key = f"{S3_STAGING_PREFIX}/{submission_id}/playwright.py"
+
+        # Upload to S3
+        s3_client.put_object(
+            Bucket=S3_BUCKET,
+            Key=s3_key,
+            Body=playwright_code,
+            ContentType='text/x-python'
+        )
+
+        print(f"Successfully saved Playwright script to s3://{S3_BUCKET}/{s3_key}")
+        return s3_key
+
+    except Exception as e:
+        print(f"Error saving Playwright script to S3: {e}")
+        raise
+
+
+def generate_playwright_script(script_text, product_url, additional_directions=None):
+    """Generate a Playwright Python script from the narrative script"""
+    try:
+        # Create a simple agent without tools to generate the Playwright script
+        agent = Agent(
+            model=MODEL_ID,
+            system_prompt="""You are an expert at creating Playwright Python scripts for web automation.
+Given a narrative script of what to do on a website, create a complete, runnable Playwright Python script.
+
+Requirements:
+1. Use async Playwright with Python
+2. Include proper imports and setup
+3. Add appropriate waits and error handling
+4. Include comments explaining each step
+5. Make the script headless by default but configurable
+6. Return ONLY the Python code, no explanations
+7. Use proper selectors (prefer data-testid, then role, then css)
+8. Add screenshots at key steps
+9. Handle common issues like popups, cookies, etc.
+"""
+        )
+
+        prompt = f"""Create a Playwright Python script for the following website: {product_url}
+
+The script should follow this narrative:
+{script_text}"""
+
+        if additional_directions:
+            prompt += f"""
+
+Additional user directions to incorporate:
+{additional_directions}"""
+
+        prompt += "\n\nReturn only the Python code, nothing else."
+
+        result = agent(prompt)
+        playwright_code = result.message.get('content', [{}])[0].get('text', str(result))
+
+        # Clean up the code if it has markdown code blocks
+        if '```python' in playwright_code:
+            playwright_code = playwright_code.split('```python')[1].split('```')[0].strip()
+        elif '```' in playwright_code:
+            playwright_code = playwright_code.split('```')[1].split('```')[0].strip()
+
+        return playwright_code
+
+    except Exception as e:
+        print(f"Error generating Playwright script: {e}")
+        raise
+
+
 @app.entrypoint
 def invoke(payload, context):
     global current_session
@@ -180,6 +255,17 @@ def invoke(payload, context):
         if submission_id and response:
             script_s3_key = save_script_to_s3(response, submission_id)
             print(f"Script saved to S3: {script_s3_key}")
+
+            # Generate and save Playwright script
+            print("Generating Playwright script from narrative...")
+            playwright_code = generate_playwright_script(
+                response,
+                payload['product_url'],
+                payload.get('directions')
+            )
+
+            playwright_s3_key = save_playwright_to_s3(playwright_code, submission_id)
+            print(f"Playwright script saved to S3: {playwright_s3_key}")
 
         return {"response": response}
 
