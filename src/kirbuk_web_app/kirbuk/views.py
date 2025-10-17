@@ -116,6 +116,7 @@ def check_status(request, submission_id):
         submission_path = f"{S3_STAGING_PREFIX}/{submission_id}"
         json_key = f"{submission_path}/{submission_id}.json"
         script_key = f"{submission_path}/script.txt"
+        voice_script_key = f"{submission_path}/voice_script.ssml"
         playwright_key = f"{submission_path}/playwright.py"
         video_key = f"{submission_path}/video.webm"
 
@@ -124,6 +125,8 @@ def check_status(request, submission_id):
             'json_created': False,
             'script_created': False,
             'script_content': None,
+            'voice_script_created': False,
+            'voice_script_content': None,
             'playwright_created': False,
             'playwright_content': None,
             'video_created': False,
@@ -148,6 +151,16 @@ def check_status(request, submission_id):
             pass
         except Exception as e:
             print(f"Error checking script file: {e}")
+
+        # Check if voice script file exists and get its content
+        try:
+            response = s3_client.get_object(Bucket=S3_BUCKET, Key=voice_script_key)
+            status['voice_script_created'] = True
+            status['voice_script_content'] = response['Body'].read().decode('utf-8')
+        except s3_client.exceptions.NoSuchKey:
+            pass
+        except Exception as e:
+            print(f"Error checking voice script file: {e}")
 
         # Check if Playwright file exists and get its content
         try:

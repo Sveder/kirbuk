@@ -152,6 +152,88 @@ def save_video_to_s3(video_path, submission_id):
         raise
 
 
+def save_voice_script_to_s3(voice_script, submission_id):
+    """Save the SSML voice script to S3 in the staging area"""
+    try:
+        s3_client = boto3.client('s3', region_name=REGION)
+
+        # Create the S3 key: staging_area/<uuid>/voice_script.ssml
+        s3_key = f"{S3_STAGING_PREFIX}/{submission_id}/voice_script.ssml"
+
+        # Upload to S3
+        s3_client.put_object(
+            Bucket=S3_BUCKET,
+            Key=s3_key,
+            Body=voice_script,
+            ContentType='application/ssml+xml'
+        )
+
+        print(f"Successfully saved voice script to s3://{S3_BUCKET}/{s3_key}")
+        return s3_key
+
+    except Exception as e:
+        print(f"Error saving voice script to S3: {e}")
+        raise
+
+
+def generate_voice_script(script_text, product_url):
+    """Generate an SSML voice script from the narrative script"""
+    try:
+        # Create a simple agent without tools to generate the SSML voice script
+        agent = Agent(
+            model=MODEL_ID,
+            system_prompt="""You are an expert at creating SSML (Speech Synthesis Markup Language) voice scripts for demo videos.
+Given a narrative script of what happens on a website, create an engaging SSML voice-over script.
+
+Requirements:
+1. Use proper SSML syntax with <speak> root element
+2. Use <break> tags for pauses at appropriate moments
+3. Use <prosody> tags to adjust rate, pitch, or volume for emphasis
+4. Use <emphasis> tags to highlight important points
+5. Make the voice-over engaging, clear, and professional
+6. Focus on explaining what the viewer is seeing and why it matters
+7. Keep sentences concise and easy to understand when spoken
+8. Return ONLY the SSML code, no explanations or markdown
+9. Use <s> tags for sentence boundaries
+10. Add appropriate pauses between sections
+
+The voice-over should guide the viewer through the demo, explaining features and benefits naturally."""
+        )
+
+        prompt = f"""Create an SSML voice-over script for a demo video of this website: {product_url}
+
+The demo follows this narrative:
+{script_text}
+
+Create an engaging voice-over that explains what's happening in the demo and highlights the key features and benefits.
+Return only the SSML code, nothing else."""
+
+        result = agent(prompt)
+        voice_script = result.message.get('content', [{}])[0].get('text', str(result))
+
+        # Clean up the code if it has markdown code blocks
+        if '```xml' in voice_script:
+            voice_script = voice_script.split('```xml')[1].split('```')[0].strip()
+        elif '```ssml' in voice_script:
+            voice_script = voice_script.split('```ssml')[1].split('```')[0].strip()
+        elif '```' in voice_script:
+            voice_script = voice_script.split('```')[1].split('```')[0].strip()
+
+        # Ensure it starts with <?xml and has <speak> tags
+        if not voice_script.startswith('<?xml'):
+            voice_script = '<?xml version="1.0"?>\n' + voice_script
+
+        if '<speak>' not in voice_script:
+            # Wrap in speak tags if missing
+            voice_script = voice_script.replace('<?xml version="1.0"?>\n', '<?xml version="1.0"?>\n<speak>\n') + '\n</speak>'
+
+        return voice_script
+
+    except Exception as e:
+        print(f"Error generating voice script: {e}")
+        raise
+
+
 def generate_playwright_script(script_text, product_url, additional_directions=None):
     """Generate a Playwright Python script from the narrative script"""
     try:
@@ -336,6 +418,18 @@ def invoke(payload, context):
         if submission_id and response:
             script_s3_key = save_script_to_s3(response, submission_id)
             print(f"Script saved to S3: {script_s3_key}")
+
+            # Generate and save voice script
+            print("Generating SSML voice script from narrative...")
+            try:
+                voice_script = generate_voice_script(response, payload['product_url'])
+                voice_script_s3_key = save_voice_script_to_s3(voice_script, submission_id)
+                print(f"Voice script saved to S3: {voice_script_s3_key}")
+            except Exception as voice_error:
+                print(f"Error generating voice script: {voice_error}")
+                # Don't fail the entire job if voice script generation fails
+                import traceback
+                print(f"Voice script generation traceback: {traceback.format_exc()}")
 
             # Generate and save Playwright script
             print("Generating Playwright script from narrative...")

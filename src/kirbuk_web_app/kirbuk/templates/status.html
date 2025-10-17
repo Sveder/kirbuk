@@ -64,16 +64,16 @@
             margin-top: 0.5rem;
         }
 
-        #script-content, #playwright-content, #video-content {
+        #script-content, #voice-script-content, #playwright-content, #video-content {
             margin-top: 1rem;
             display: none;
         }
 
-        #script-content h4, #playwright-content h4, #video-content h4 {
+        #script-content h4, #voice-script-content h4, #playwright-content h4, #video-content h4 {
             margin-bottom: 0.5rem;
         }
 
-        #script-content pre, #playwright-content pre {
+        #script-content pre, #voice-script-content pre, #playwright-content pre {
             background-color: rgba(0,0,0,0.3);
             padding: 1rem;
             border-radius: 4px;
@@ -141,6 +141,7 @@
                 <h3>Status</h3>
                 <p id="json-status">📝 Waiting for payload...</p>
                 <p id="script-status">📜 Waiting for script...</p>
+                <p id="voice-script-status">🎙️ Waiting for voice script...</p>
                 <p id="playwright-status">🎭 Waiting for Playwright script...</p>
                 <p id="video-status">🎬 Waiting for video...</p>
 
@@ -153,6 +154,11 @@
 
                 <div id="script-content">
                     <h4>Script Content:</h4>
+                    <pre></pre>
+                </div>
+
+                <div id="voice-script-content">
+                    <h4>Voice Script (SSML):</h4>
                     <pre></pre>
                 </div>
 
@@ -196,6 +202,19 @@
                             // Show script content
                             scriptContentDiv.style.display = 'block';
                             scriptContentDiv.querySelector('pre').textContent = status.script_content;
+                        }
+
+                        // Update voice script status
+                        const voiceScriptStatusEl = document.getElementById('voice-script-status');
+                        const voiceScriptContentDiv = document.getElementById('voice-script-content');
+
+                        if (status.voice_script_created && status.voice_script_content) {
+                            voiceScriptStatusEl.textContent = '✅ Voice script created';
+                            voiceScriptStatusEl.style.color = '#90EE90';
+
+                            // Show voice script content
+                            voiceScriptContentDiv.style.display = 'block';
+                            voiceScriptContentDiv.querySelector('pre').textContent = status.voice_script_content;
                         }
 
                         // Update Playwright status
