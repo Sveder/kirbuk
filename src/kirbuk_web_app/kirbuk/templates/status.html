@@ -3,6 +3,7 @@
 <head>
     <title>Submission Status - Kirbuk</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <style>
         * {
             box-sizing: border-box;
@@ -64,12 +65,12 @@
             margin-top: 0.5rem;
         }
 
-        #script-content, #voice-script-content, #playwright-content, #video-content {
+        #script-content, #voice-script-content, #voice-audio-content, #playwright-content, #video-content {
             margin-top: 1rem;
             display: none;
         }
 
-        #script-content h4, #voice-script-content h4, #playwright-content h4, #video-content h4 {
+        #script-content h4, #voice-script-content h4, #voice-audio-content h4, #playwright-content h4, #video-content h4 {
             margin-bottom: 0.5rem;
         }
 
@@ -88,12 +89,31 @@
             font-size: 0.85rem;
         }
 
-        #video-player {
+        #video-player, #audio-player {
             width: 100%;
             max-width: 640px;
             margin: 0 auto;
             border-radius: 4px;
+        }
+
+        #video-player {
             background-color: #000;
+        }
+
+        .download-btn {
+            display: inline-block;
+            margin-top: 1rem;
+            padding: 0.75rem 1.5rem;
+            background-color: #D2691E;
+            color: #FFF8DC;
+            text-decoration: none;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+            font-weight: 600;
+        }
+
+        .download-btn:hover {
+            background-color: #CD853F;
         }
 
         .back-link {
@@ -142,6 +162,7 @@
                 <p id="json-status">📝 Waiting for payload...</p>
                 <p id="script-status">📜 Waiting for script...</p>
                 <p id="voice-script-status">🎙️ Waiting for voice script...</p>
+                <p id="voice-audio-status">🔊 Waiting for voice audio...</p>
                 <p id="playwright-status">🎭 Waiting for Playwright script...</p>
                 <p id="video-status">🎬 Waiting for video...</p>
 
@@ -150,6 +171,18 @@
                     <video id="video-player" controls>
                         Your browser does not support the video tag.
                     </video>
+                    <div style="text-align: center;">
+                        <a id="download-video-btn" href="#" class="download-btn" download="demo-video.webm" style="display: none;">
+                            Download Video
+                        </a>
+                    </div>
+                </div>
+
+                <div id="voice-audio-content">
+                    <h4>Voice Audio:</h4>
+                    <audio id="audio-player" controls>
+                        Your browser does not support the audio tag.
+                    </audio>
                 </div>
 
                 <div id="script-content">
@@ -217,6 +250,20 @@
                             voiceScriptContentDiv.querySelector('pre').textContent = status.voice_script_content;
                         }
 
+                        // Update voice audio status
+                        const voiceAudioStatusEl = document.getElementById('voice-audio-status');
+                        const voiceAudioContentDiv = document.getElementById('voice-audio-content');
+                        const audioPlayer = document.getElementById('audio-player');
+
+                        if (status.voice_audio_created && status.voice_audio_url) {
+                            voiceAudioStatusEl.textContent = '✅ Voice audio synthesized';
+                            voiceAudioStatusEl.style.color = '#90EE90';
+
+                            // Show audio player with the synthesized voice
+                            voiceAudioContentDiv.style.display = 'block';
+                            audioPlayer.src = status.voice_audio_url;
+                        }
+
                         // Update Playwright status
                         const playwrightStatusEl = document.getElementById('playwright-status');
                         const playwrightContentDiv = document.getElementById('playwright-content');
@@ -234,6 +281,7 @@
                         const videoStatusEl = document.getElementById('video-status');
                         const videoContentDiv = document.getElementById('video-content');
                         const videoPlayer = document.getElementById('video-player');
+                        const downloadBtn = document.getElementById('download-video-btn');
 
                         if (status.video_created && status.video_url) {
                             videoStatusEl.textContent = '✅ Video created';
@@ -242,6 +290,10 @@
                             // Show video player with the video
                             videoContentDiv.style.display = 'block';
                             videoPlayer.src = status.video_url;
+
+                            // Show and configure download button
+                            downloadBtn.href = status.video_url;
+                            downloadBtn.style.display = 'inline-block';
 
                             // Stop polling once video is created
                             clearInterval(interval);

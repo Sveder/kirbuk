@@ -152,6 +152,63 @@ def save_video_to_s3(video_path, submission_id):
         raise
 
 
+def merge_audio_video_with_ffmpeg(video_path, audio_path, output_path):
+    """Merge audio and video files using FFmpeg
+
+    Args:
+        video_path: Path to the input video file (webm)
+        audio_path: Path to the input audio file (mp3)
+        output_path: Path for the output video file (webm with audio)
+
+    Returns:
+        Path to the output file
+    """
+    import subprocess
+
+    try:
+        print(f"Merging audio and video with FFmpeg...")
+        print(f"Video: {video_path}")
+        print(f"Audio: {audio_path}")
+        print(f"Output: {output_path}")
+
+        # FFmpeg command to merge audio and video
+        # -i: input files
+        # -c:v copy: copy video codec without re-encoding (fast)
+        # -c:a libopus: convert audio to Opus codec (WebM compatible)
+        # -shortest: finish encoding when shortest input stream ends
+        cmd = [
+            'ffmpeg',
+            '-i', video_path,        # Input video
+            '-i', audio_path,        # Input audio
+            '-c:v', 'copy',          # Copy video without re-encoding
+            '-c:a', 'libopus',       # Convert audio to Opus for WebM
+            '-shortest',             # Match shortest duration
+            '-y',                    # Overwrite output file if exists
+            output_path
+        ]
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=120  # 2 minute timeout
+        )
+
+        if result.returncode != 0:
+            print(f"FFmpeg stderr: {result.stderr}")
+            raise Exception(f"FFmpeg failed with return code {result.returncode}: {result.stderr}")
+
+        print(f"Successfully merged audio and video: {output_path}")
+        return output_path
+
+    except subprocess.TimeoutExpired:
+        print("FFmpeg merge timed out after 2 minutes")
+        raise Exception("FFmpeg merge timed out")
+    except Exception as e:
+        print(f"Error merging audio and video: {e}")
+        raise
+
+
 def save_voice_script_to_s3(voice_script, submission_id):
     """Save the SSML voice script to S3 in the staging area"""
     try:
@@ -173,6 +230,61 @@ def save_voice_script_to_s3(voice_script, submission_id):
 
     except Exception as e:
         print(f"Error saving voice script to S3: {e}")
+        raise
+
+
+def save_voice_audio_to_s3(audio_data, submission_id):
+    """Save the synthesized voice audio to S3 in the staging area"""
+    try:
+        s3_client = boto3.client('s3', region_name=REGION)
+
+        # Create the S3 key: staging_area/<uuid>/voice.mp3
+        s3_key = f"{S3_STAGING_PREFIX}/{submission_id}/voice.mp3"
+
+        # Upload to S3
+        s3_client.put_object(
+            Bucket=S3_BUCKET,
+            Key=s3_key,
+            Body=audio_data,
+            ContentType='audio/mpeg'
+        )
+
+        print(f"Successfully saved voice audio to s3://{S3_BUCKET}/{s3_key}")
+        return s3_key
+
+    except Exception as e:
+        print(f"Error saving voice audio to S3: {e}")
+        raise
+
+
+def synthesize_voice_with_polly(voice_script, submission_id):
+    """Synthesize voice from SSML script using AWS Polly with Matthew voice and generative engine"""
+    try:
+        polly_client = boto3.client('polly', region_name=REGION)
+
+        print("Synthesizing voice with AWS Polly (Matthew voice, generative engine)...")
+
+        # Synthesize speech using Polly
+        response = polly_client.synthesize_speech(
+            Engine='generative',  # Use generative engine for more natural speech
+            VoiceId='Matthew',    # Male voice
+            OutputFormat='mp3',
+            TextType='ssml',
+            Text=voice_script
+        )
+
+        # Read the audio stream
+        audio_data = response['AudioStream'].read()
+
+        print(f"Voice synthesis completed, audio size: {len(audio_data)} bytes")
+
+        # Save to S3
+        s3_key = save_voice_audio_to_s3(audio_data, submission_id)
+
+        return s3_key
+
+    except Exception as e:
+        print(f"Error synthesizing voice with Polly: {e}")
         raise
 
 
@@ -287,7 +399,7 @@ Additional user directions to incorporate:
 
 
 def execute_playwright_script(playwright_code, submission_id):
-    """Execute the Playwright script and upload the resulting video to S3"""
+    """Execute the Playwright script, merge audio with video, and upload the resulting video to S3"""
     import tempfile
     import subprocess
 
@@ -323,10 +435,42 @@ def execute_playwright_script(playwright_code, submission_id):
             if not os.path.exists(video_path):
                 raise Exception("Video file 'output.webm' was not created by the script")
 
-            # Upload video to S3
-            print(f"Video created successfully, uploading to S3...")
+            # Try to download audio from S3 and merge it with the video
+            print("\n" + "-" * 80)
+            print("STEP 6.1: Attempting to merge audio with video")
+            print("-" * 80)
+            try:
+                s3_client = boto3.client('s3', region_name=REGION)
+                audio_s3_key = f"{S3_STAGING_PREFIX}/{submission_id}/voice.mp3"
+                audio_path = os.path.join(temp_dir, 'voice.mp3')
+
+                print(f"→ Downloading audio from S3: {audio_s3_key}")
+                s3_client.download_file(S3_BUCKET, audio_s3_key, audio_path)
+                print(f"✓ Audio downloaded successfully (size: {os.path.getsize(audio_path)} bytes)")
+
+                # Merge audio and video
+                merged_video_path = os.path.join(temp_dir, 'output_with_audio.webm')
+                print(f"→ Merging audio and video with FFmpeg...")
+                merge_audio_video_with_ffmpeg(video_path, audio_path, merged_video_path)
+
+                # Use the merged video as the final video
+                video_path = merged_video_path
+                print(f"✓ Audio and video merged successfully (size: {os.path.getsize(video_path)} bytes)")
+
+            except s3_client.exceptions.NoSuchKey:
+                print(f"⚠ No audio file found in S3 at {audio_s3_key}, uploading video without audio")
+            except Exception as merge_error:
+                print(f"✗ Error merging audio with video: {merge_error}")
+                print("⚠ Uploading video without audio")
+                import traceback
+                print(f"Audio merge traceback: {traceback.format_exc()}")
+
+            # Upload final video to S3
+            print("\n" + "-" * 80)
+            print("STEP 6.2: Uploading final video to S3")
+            print("-" * 80)
             s3_key = save_video_to_s3(video_path, submission_id)
-            print(f"Video uploaded to S3: {s3_key}")
+            print(f"✓ Video uploaded to S3: {s3_key}")
 
             return s3_key
 
@@ -406,41 +550,73 @@ def invoke(payload, context):
         prompt = f"Visit website {payload['product_url']}. Additional user instructions: {payload['directions']}."
         if payload.get('test_username') and payload.get('test_password'):
             prompt += f" Use username/email '{payload['test_username']}' and password '{payload['test_password']}' to login to the site."
-        
-        result = agent(prompt)
 
+        print("=" * 80)
+        print("STEP 1: Invoking agent to explore website")
+        print("=" * 80)
+        result = agent(prompt)
+        print("✓ Agent exploration completed")
+
+        print("\nClosing browser platform...")
         browser_tool.close_platform()
+        print("✓ Browser closed")
 
         response = result.message.get('content', [{}])[0].get('text', str(result))
-        print(f"Response: {response}")
+        print(f"\n{'=' * 80}")
+        print(f"Agent Response Length: {len(response)} characters")
+        print(f"{'=' * 80}")
 
         # Save script to S3 before returning
         if submission_id and response:
+            print("\n" + "=" * 80)
+            print("STEP 2: Saving narrative script to S3")
+            print("=" * 80)
             script_s3_key = save_script_to_s3(response, submission_id)
-            print(f"Script saved to S3: {script_s3_key}")
+            print(f"✓ Script saved to S3: {script_s3_key}")
 
             # Generate and save voice script
-            print("Generating SSML voice script from narrative...")
+            print("\n" + "=" * 80)
+            print("STEP 3: Generating SSML voice script")
+            print("=" * 80)
+            voice_script = None
             try:
                 voice_script = generate_voice_script(response, payload['product_url'])
+                print(f"✓ Voice script generated ({len(voice_script)} characters)")
+
                 voice_script_s3_key = save_voice_script_to_s3(voice_script, submission_id)
-                print(f"Voice script saved to S3: {voice_script_s3_key}")
+                print(f"✓ Voice script saved to S3: {voice_script_s3_key}")
+
+                # Synthesize voice using AWS Polly
+                print("\n" + "=" * 80)
+                print("STEP 4: Synthesizing voice with AWS Polly")
+                print("=" * 80)
+                try:
+                    voice_audio_s3_key = synthesize_voice_with_polly(voice_script, submission_id)
+                    print(f"✓ Voice audio synthesized and saved to S3: {voice_audio_s3_key}")
+                except Exception as polly_error:
+                    print(f"✗ Error synthesizing voice with Polly: {polly_error}")
+                    import traceback
+                    print(f"Polly synthesis traceback: {traceback.format_exc()}")
+
             except Exception as voice_error:
-                print(f"Error generating voice script: {voice_error}")
+                print(f"✗ Error generating voice script: {voice_error}")
                 # Don't fail the entire job if voice script generation fails
                 import traceback
                 print(f"Voice script generation traceback: {traceback.format_exc()}")
 
             # Generate and save Playwright script
-            print("Generating Playwright script from narrative...")
+            print("\n" + "=" * 80)
+            print("STEP 5: Generating Playwright script")
+            print("=" * 80)
             playwright_code = generate_playwright_script(
                 response,
                 payload['product_url'],
                 payload.get('directions')
             )
+            print(f"✓ Playwright script generated ({len(playwright_code)} characters)")
 
             playwright_s3_key = save_playwright_to_s3(playwright_code, submission_id)
-            print(f"Playwright script saved to S3: {playwright_s3_key}")
+            print(f"✓ Playwright script saved to S3: {playwright_s3_key}")
 
             # Save generated Playwright code to a file for debugging/local use
             if playwright_code:
@@ -448,24 +624,38 @@ def invoke(payload, context):
                 try:
                     with open(debug_script_path, "w", encoding="utf-8") as f:
                         f.write(playwright_code)
-                    print(f"Playwright code also saved locally at: {debug_script_path}")
+                    print(f"✓ Playwright code also saved locally at: {debug_script_path}")
                 except Exception as file_save_exc:
-                    print(f"Warning: Failed to save playwright script to file: {file_save_exc}")
+                    print(f"✗ Warning: Failed to save playwright script to file: {file_save_exc}")
 
             # Execute the Playwright script and upload video
-            print("Executing Playwright script to create video...")
+            print("\n" + "=" * 80)
+            print("STEP 6: Executing Playwright script to create video")
+            print("=" * 80)
             try:
                 video_s3_key = execute_playwright_script(playwright_code, submission_id)
-                print(f"Video successfully created and uploaded to S3: {video_s3_key}")
+                print(f"✓ Video successfully created and uploaded to S3: {video_s3_key}")
             except Exception as video_error:
-                print(f"Error creating video: {video_error}")
+                print(f"✗ Error creating video: {video_error}")
                 # Don't fail the entire job if video creation fails
                 import traceback
                 print(f"Video creation traceback: {traceback.format_exc()}")
 
+        print("\n" + "=" * 80)
+        print("✅ WORKFLOW COMPLETED SUCCESSFULLY")
+        print("=" * 80)
+        print(f"Submission ID: {submission_id}")
+        print("=" * 80)
+
         return {"response": response}
 
     except Exception as e:
+        print("\n" + "=" * 80)
+        print("❌ WORKFLOW FAILED")
+        print("=" * 80)
+        print(f"Error: {str(e)}")
+        print("=" * 80)
+
         # Capture exception in Sentry with context
         sentry_sdk.set_context("payload", payload)
         sentry_sdk.set_context("session", {

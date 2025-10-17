@@ -10,7 +10,7 @@ ENV UV_SYSTEM_PYTHON=1 \
     AWS_REGION=eu-central-1 \
     AWS_DEFAULT_REGION=eu-central-1
 
-# Install system dependencies for Playwright
+# Install system dependencies for Playwright and FFmpeg
 RUN apt-get update && apt-get install -y \
     wget \
     ca-certificates \
@@ -35,6 +35,7 @@ RUN apt-get update && apt-get install -y \
     xdg-utils \
     libu2f-udev \
     libvulkan1 \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt requirements.txt

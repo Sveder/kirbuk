@@ -15,6 +15,8 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.urls import path
+from django.conf import settings
+from django.conf.urls.static import static
 from kirbuk.views import hello_world, submit_form, submission_status, check_status
 
 def trigger_error(request):
@@ -27,3 +29,7 @@ urlpatterns = [
     path('api/status/<str:submission_id>', check_status, name='check_status'),
     path('sentry-debug/', trigger_error),
 ]
+
+# Serve static files in development
+if settings.DEBUG:
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.BASE_DIR / 'kirbuk' / 'static')

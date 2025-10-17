@@ -117,6 +117,7 @@ def check_status(request, submission_id):
         json_key = f"{submission_path}/{submission_id}.json"
         script_key = f"{submission_path}/script.txt"
         voice_script_key = f"{submission_path}/voice_script.ssml"
+        voice_audio_key = f"{submission_path}/voice.mp3"
         playwright_key = f"{submission_path}/playwright.py"
         video_key = f"{submission_path}/video.webm"
 
@@ -127,6 +128,8 @@ def check_status(request, submission_id):
             'script_content': None,
             'voice_script_created': False,
             'voice_script_content': None,
+            'voice_audio_created': False,
+            'voice_audio_url': None,
             'playwright_created': False,
             'playwright_content': None,
             'video_created': False,
@@ -161,6 +164,21 @@ def check_status(request, submission_id):
             pass
         except Exception as e:
             print(f"Error checking voice script file: {e}")
+
+        # Check if voice audio file exists and generate presigned URL
+        try:
+            s3_client.head_object(Bucket=S3_BUCKET, Key=voice_audio_key)
+            status['voice_audio_created'] = True
+            # Generate presigned URL valid for 1 hour
+            status['voice_audio_url'] = s3_client.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': S3_BUCKET, 'Key': voice_audio_key},
+                ExpiresIn=3600
+            )
+        except s3_client.exceptions.NoSuchKey:
+            pass
+        except Exception as e:
+            print(f"Error checking voice audio file: {e}")
 
         # Check if Playwright file exists and get its content
         try:
