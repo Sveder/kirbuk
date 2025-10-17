@@ -124,6 +124,34 @@ def save_playwright_to_s3(playwright_code, submission_id):
         raise
 
 
+def save_video_to_s3(video_path, submission_id):
+    """Save the video to S3 in the staging area"""
+    try:
+        s3_client = boto3.client('s3', region_name=REGION)
+
+        # Create the S3 key: staging_area/<uuid>/video.webm
+        s3_key = f"{S3_STAGING_PREFIX}/{submission_id}/video.webm"
+
+        # Read video file
+        with open(video_path, 'rb') as video_file:
+            video_data = video_file.read()
+
+        # Upload to S3
+        s3_client.put_object(
+            Bucket=S3_BUCKET,
+            Key=s3_key,
+            Body=video_data,
+            ContentType='video/webm'
+        )
+
+        print(f"Successfully saved video to s3://{S3_BUCKET}/{s3_key}")
+        return s3_key
+
+    except Exception as e:
+        print(f"Error saving video to S3: {e}")
+        raise
+
+
 def generate_playwright_script(script_text, product_url, additional_directions=None):
     """Generate a Playwright Python script from the narrative script"""
     try:
@@ -139,11 +167,11 @@ Requirements:
 2. Include proper imports and setup
 3. Add appropriate waits and error handling
 4. Include comments explaining each step
-5. Make the script headless by default but configurable
+5. Make the script record video to 'output.webm' file
 6. Return ONLY the Python code, no explanations
 7. Use proper selectors (prefer data-testid, then role, then css)
-8. Add screenshots at key steps
-9. Handle common issues like popups, cookies, etc.
+8. Handle common issues like popups, cookies, etc.
+9. The script MUST save video as 'output.webm' in current directory
 """
         )
 
@@ -158,7 +186,7 @@ The script should follow this narrative:
 Additional user directions to incorporate:
 {additional_directions}"""
 
-        prompt += "\n\nReturn only the Python code, nothing else."
+        prompt += "\n\nIMPORTANT: The script MUST record video and save it as 'output.webm'. Return only the Python code, nothing else."
 
         result = agent(prompt)
         playwright_code = result.message.get('content', [{}])[0].get('text', str(result))
@@ -173,6 +201,58 @@ Additional user directions to incorporate:
 
     except Exception as e:
         print(f"Error generating Playwright script: {e}")
+        raise
+
+
+def execute_playwright_script(playwright_code, submission_id):
+    """Execute the Playwright script and upload the resulting video to S3"""
+    import tempfile
+    import subprocess
+
+    try:
+        # Create a temporary directory for execution
+        with tempfile.TemporaryDirectory() as temp_dir:
+            print(f"Executing Playwright script in {temp_dir}")
+
+            # Write the script to a file
+            script_path = os.path.join(temp_dir, 'playwright_script.py')
+            with open(script_path, 'w') as f:
+                f.write(playwright_code)
+
+            # Execute the script
+            print("Running Playwright script...")
+            result = subprocess.run(
+                ['python', script_path],
+                cwd=temp_dir,
+                capture_output=True,
+                text=True,
+                timeout=300  # 5 minute timeout
+            )
+
+            print(f"Script execution stdout: {result.stdout}")
+            if result.stderr:
+                print(f"Script execution stderr: {result.stderr}")
+
+            if result.returncode != 0:
+                raise Exception(f"Playwright script failed with return code {result.returncode}: {result.stderr}")
+
+            # Check if video was created
+            video_path = os.path.join(temp_dir, 'output.webm')
+            if not os.path.exists(video_path):
+                raise Exception("Video file 'output.webm' was not created by the script")
+
+            # Upload video to S3
+            print(f"Video created successfully, uploading to S3...")
+            s3_key = save_video_to_s3(video_path, submission_id)
+            print(f"Video uploaded to S3: {s3_key}")
+
+            return s3_key
+
+    except subprocess.TimeoutExpired:
+        print("Playwright script execution timed out after 5 minutes")
+        raise Exception("Script execution timed out")
+    except Exception as e:
+        print(f"Error executing Playwright script: {e}")
         raise
 
 
@@ -275,10 +355,19 @@ def invoke(payload, context):
                     with open(debug_script_path, "w", encoding="utf-8") as f:
                         f.write(playwright_code)
                     print(f"Playwright code also saved locally at: {debug_script_path}")
-
-
                 except Exception as file_save_exc:
                     print(f"Warning: Failed to save playwright script to file: {file_save_exc}")
+
+            # Execute the Playwright script and upload video
+            print("Executing Playwright script to create video...")
+            try:
+                video_s3_key = execute_playwright_script(playwright_code, submission_id)
+                print(f"Video successfully created and uploaded to S3: {video_s3_key}")
+            except Exception as video_error:
+                print(f"Error creating video: {video_error}")
+                # Don't fail the entire job if video creation fails
+                import traceback
+                print(f"Video creation traceback: {traceback.format_exc()}")
 
         return {"response": response}
 

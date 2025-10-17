@@ -117,6 +117,7 @@ def check_status(request, submission_id):
         json_key = f"{submission_path}/{submission_id}.json"
         script_key = f"{submission_path}/script.txt"
         playwright_key = f"{submission_path}/playwright.py"
+        video_key = f"{submission_path}/video.webm"
 
         status = {
             'submission_id': submission_id,
@@ -124,7 +125,9 @@ def check_status(request, submission_id):
             'script_created': False,
             'script_content': None,
             'playwright_created': False,
-            'playwright_content': None
+            'playwright_content': None,
+            'video_created': False,
+            'video_url': None
         }
 
         # Check if JSON file exists
@@ -155,6 +158,21 @@ def check_status(request, submission_id):
             pass
         except Exception as e:
             print(f"Error checking Playwright file: {e}")
+
+        # Check if video file exists and generate presigned URL
+        try:
+            s3_client.head_object(Bucket=S3_BUCKET, Key=video_key)
+            status['video_created'] = True
+            # Generate presigned URL valid for 1 hour
+            status['video_url'] = s3_client.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': S3_BUCKET, 'Key': video_key},
+                ExpiresIn=3600
+            )
+        except s3_client.exceptions.NoSuchKey:
+            pass
+        except Exception as e:
+            print(f"Error checking video file: {e}")
 
         return JsonResponse(status)
 

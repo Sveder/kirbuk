@@ -64,12 +64,12 @@
             margin-top: 0.5rem;
         }
 
-        #script-content, #playwright-content {
+        #script-content, #playwright-content, #video-content {
             margin-top: 1rem;
             display: none;
         }
 
-        #script-content h4, #playwright-content h4 {
+        #script-content h4, #playwright-content h4, #video-content h4 {
             margin-bottom: 0.5rem;
         }
 
@@ -86,6 +86,14 @@
         #playwright-content pre {
             font-family: monospace;
             font-size: 0.85rem;
+        }
+
+        #video-player {
+            width: 100%;
+            max-width: 640px;
+            margin: 0 auto;
+            border-radius: 4px;
+            background-color: #000;
         }
 
         .back-link {
@@ -134,6 +142,14 @@
                 <p id="json-status">📝 Waiting for payload...</p>
                 <p id="script-status">📜 Waiting for script...</p>
                 <p id="playwright-status">🎭 Waiting for Playwright script...</p>
+                <p id="video-status">🎬 Waiting for video...</p>
+
+                <div id="video-content">
+                    <h4>Demo Video:</h4>
+                    <video id="video-player" controls>
+                        Your browser does not support the video tag.
+                    </video>
+                </div>
 
                 <div id="script-content">
                     <h4>Script Content:</h4>
@@ -193,8 +209,22 @@
                             // Show Playwright content
                             playwrightContentDiv.style.display = 'block';
                             playwrightContentDiv.querySelector('pre').textContent = status.playwright_content;
+                        }
 
-                            // Stop polling once Playwright is created
+                        // Update video status
+                        const videoStatusEl = document.getElementById('video-status');
+                        const videoContentDiv = document.getElementById('video-content');
+                        const videoPlayer = document.getElementById('video-player');
+
+                        if (status.video_created && status.video_url) {
+                            videoStatusEl.textContent = '✅ Video created';
+                            videoStatusEl.style.color = '#90EE90';
+
+                            // Show video player with the video
+                            videoContentDiv.style.display = 'block';
+                            videoPlayer.src = status.video_url;
+
+                            // Stop polling once video is created
                             clearInterval(interval);
                         }
                     }
