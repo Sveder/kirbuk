@@ -132,6 +132,7 @@ def generate_playwright_script(script_text, product_url, additional_directions=N
             model=MODEL_ID,
             system_prompt="""You are an expert at creating Playwright Python scripts for web automation.
 Given a narrative script of what to do on a website, create a complete, runnable Playwright Python script.
+Make sure the script is configured to save videos using context.record_video_dir="videos/" and context.record_video_size={"width": 1280, "height":720}.
 
 Requirements:
 1. Use async Playwright with Python
@@ -266,6 +267,18 @@ def invoke(payload, context):
 
             playwright_s3_key = save_playwright_to_s3(playwright_code, submission_id)
             print(f"Playwright script saved to S3: {playwright_s3_key}")
+
+            # Save generated Playwright code to a file for debugging/local use
+            if playwright_code:
+                debug_script_path = f"/tmp/playwright_script_{submission_id}.py"
+                try:
+                    with open(debug_script_path, "w", encoding="utf-8") as f:
+                        f.write(playwright_code)
+                    print(f"Playwright code also saved locally at: {debug_script_path}")
+
+
+                except Exception as file_save_exc:
+                    print(f"Warning: Failed to save playwright script to file: {file_save_exc}")
 
         return {"response": response}
 
