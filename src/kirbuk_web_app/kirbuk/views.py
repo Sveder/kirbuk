@@ -4,6 +4,7 @@ from django.views.decorators.csrf import csrf_exempt
 import json
 import uuid
 import boto3
+import threading
 
 # Agent configuration
 AGENT_ARN = "arn:aws:bedrock-agentcore:eu-central-1:800622328366:runtime/agentcore_starter_strands-V5kqR7Ap5a"
@@ -11,9 +12,13 @@ AWS_REGION = "eu-central-1"
 S3_BUCKET = "sveder-kirbuk"
 S3_STAGING_PREFIX = "staging_area"
 
+# Keep track of submissions being processed to prevent duplicates across workers
+_processing_submissions = set()
+_processing_lock = threading.Lock()
 
-def invoke_agent(data, submission_id):
-    """Invoke the agent (AWS handles async execution)"""
+
+def invoke_agent_async(data, submission_id):
+    """Invoke the agent in a background thread"""
     try:
         agent_core_client = boto3.client('bedrock-agentcore', region_name=AWS_REGION)
 
@@ -24,11 +29,10 @@ def invoke_agent(data, submission_id):
         # Prepare the payload - send data directly without "input" wrapper
         payload = json.dumps(data)
 
-        print(f"Invoking agent with session_id: {session_id}")
-        print(f"Payload: {payload}")
+        print(f"[Thread] Invoking agent with session_id: {session_id}")
+        print(f"[Thread] Payload: {payload}")
 
-        # Invoke the agent - AWS Bedrock handles the async execution
-        # This call returns quickly as the agent runs asynchronously in AWS
+        # Invoke the agent - this is a blocking call that waits for completion
         response = agent_core_client.invoke_agent_runtime(
             agentRuntimeArn=AGENT_ARN,
             runtimeSessionId=session_id,
@@ -40,14 +44,16 @@ def invoke_agent(data, submission_id):
         response_body = response['response'].read()
         response_data = json.loads(response_body)
 
-        print(f"Agent invoked successfully. Response: {response_data}")
-        return True
+        print(f"[Thread] Agent invoked successfully. Response: {response_data}")
 
     except Exception as agent_error:
-        print(f"Error invoking agent: {agent_error}")
+        print(f"[Thread] Error invoking agent: {agent_error}")
         import traceback
-        print(f"Traceback: {traceback.format_exc()}")
-        return False
+        print(f"[Thread] Traceback: {traceback.format_exc()}")
+    finally:
+        # Remove from processing set when done
+        with _processing_lock:
+            _processing_submissions.discard(submission_id)
 
 
 def hello_world(request):
@@ -82,20 +88,30 @@ def submit_form(request):
         print(f"Roast Mode: {data.get('roast_mode')}")
         print("=" * 80)
 
-        # Invoke the agent directly (AWS handles async execution)
-        # This returns quickly, so no need for background thread
-        success = invoke_agent(data, submission_id)
+        # Check if this submission is already being processed
+        with _processing_lock:
+            if submission_id in _processing_submissions:
+                print(f"⚠️  Duplicate submission detected for {submission_id}, skipping")
+                return JsonResponse({
+                    'success': True,
+                    'submission_id': submission_id,
+                    'message': 'Form already submitted, processing in progress'
+                })
+            # Mark as being processed
+            _processing_submissions.add(submission_id)
 
-        if success:
-            print(f"✓ Agent invocation request submitted successfully for {submission_id}")
-        else:
-            print(f"✗ Agent invocation failed for {submission_id}")
+        # Start agent invocation in background thread
+        # Thread is NOT daemon, so it will complete even if worker restarts
+        thread = threading.Thread(target=invoke_agent_async, args=(data, submission_id))
+        thread.start()
 
-        # Return immediately - agent runs asynchronously in AWS
+        print(f"✓ Agent invocation started in background thread for {submission_id}")
+
+        # Return immediately - agent runs in background
         return JsonResponse({
-            'success': success,
+            'success': True,
             'submission_id': submission_id,
-            'message': 'Form submitted successfully, video generation in progress' if success else 'Form submission failed'
+            'message': 'Form submitted successfully, video generation in progress'
         })
 
     except json.JSONDecodeError:
