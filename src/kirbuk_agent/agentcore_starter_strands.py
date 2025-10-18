@@ -272,14 +272,28 @@ def synthesize_voice_with_polly(voice_script, submission_id):
                 print(f"✓ Voice synthesis completed successfully")
                 print(f"Output URI: {output_uri}")
 
-                # Extract the S3 key from the output URI
-                # Format: https://s3.region.amazonaws.com/bucket/key
-                # We need to construct our expected key
-                s3_key = f"{S3_STAGING_PREFIX}/{submission_id}/voice.mp3"
+                # Parse the S3 key from the OutputUri
+                # Format: https://s3.region.amazonaws.com/bucket/key or
+                #         https://bucket.s3.region.amazonaws.com/key
+                import urllib.parse
+                parsed = urllib.parse.urlparse(output_uri)
+                # Extract key from path (remove leading /)
+                polly_s3_key = parsed.path.lstrip('/')
+                # If bucket is in hostname, we need to handle that
+                if S3_BUCKET in parsed.netloc:
+                    # Format is bucket.s3.region.amazonaws.com/key
+                    polly_s3_key = parsed.path.lstrip('/')
+                else:
+                    # Format is s3.region.amazonaws.com/bucket/key
+                    # Remove bucket name from path
+                    path_parts = parsed.path.lstrip('/').split('/', 1)
+                    if len(path_parts) > 1:
+                        polly_s3_key = path_parts[1]
 
-                # Polly creates a file with task ID in name, we need to rename it
-                # The actual file is at: staging_area/<uuid>/<task_id>.mp3
-                polly_s3_key = f"{S3_STAGING_PREFIX}/{submission_id}/{task_id}.mp3"
+                print(f"Polly created file at S3 key: {polly_s3_key}")
+
+                # Our expected key
+                s3_key = f"{S3_STAGING_PREFIX}/{submission_id}/voice.mp3"
 
                 # Copy to our expected filename
                 s3_client = boto3.client('s3', region_name=REGION)
@@ -288,10 +302,11 @@ def synthesize_voice_with_polly(voice_script, submission_id):
                     CopySource={'Bucket': S3_BUCKET, 'Key': polly_s3_key},
                     Key=s3_key
                 )
-                print(f"✓ Renamed synthesis output to: {s3_key}")
+                print(f"✓ Renamed synthesis output from {polly_s3_key} to {s3_key}")
 
                 # Delete the original Polly file
                 s3_client.delete_object(Bucket=S3_BUCKET, Key=polly_s3_key)
+                print(f"✓ Deleted temporary file: {polly_s3_key}")
 
                 return s3_key
 
