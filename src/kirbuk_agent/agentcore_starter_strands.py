@@ -32,6 +32,11 @@ what is the user flow through it and main functionality.
 
 Your response should be a script for what to do on website to best showcase the main features.
 
+IMPORTANT TIMING: Create a script that will take approximately 2 minutes to demonstrate.
+- Include enough steps to fill 2 minutes of screen time
+- Each action takes 3-5 seconds, so plan for about 24-40 actions total
+- Include pauses where needed to let information sink in
+
 More rules:
 1. If the site throws an error, note it but continue your exploration.
 2. If you find settings - look at them but do not try to change settings.
@@ -334,6 +339,11 @@ def generate_voice_script(script_text, product_url):
             model=MODEL_ID,
             system_prompt="""You are an expert at creating SSML (Speech Synthesis Markup Language) voice scripts for demo videos using AWS Polly Generative engine.
 
+IMPORTANT TIMING: Create a narration that will take approximately 2 minutes to speak.
+- Aim for 250-300 words total (typical speaking rate is 130-150 words per minute)
+- Include strategic pauses to allow viewers to absorb what they're seeing
+- The narration should match the pacing of the on-screen actions
+
 IMPORTANT - Only use these SSML tags (fully supported by Polly Generative):
 - <speak> - Root element (required)
 - <break> - Add pauses (use time="500ms" or strength="medium")
@@ -360,6 +370,7 @@ Requirements:
 7. Keep sentences concise and easy to understand when spoken
 8. Return ONLY the SSML code, no explanations or markdown
 9. Add appropriate pauses between sections using <break>
+10. Time the narration to match the ~2 minute video duration
 
 The voice-over should guide the viewer through the demo, explaining features and benefits naturally."""
         )
@@ -404,20 +415,28 @@ def generate_playwright_script(script_text, product_url, additional_directions=N
         # Create a simple agent without tools to generate the Playwright script
         agent = Agent(
             model=MODEL_ID,
-            system_prompt="""You are an expert at creating Playwright Python scripts for web automation.
+            system_prompt="""You are an expert at creating Playwright Python scripts for web automation and demo video creation.
 Given a narrative script of what to do on a website, create a complete, runnable Playwright Python script.
 Make sure the script is configured to save videos using context.record_video_dir="videos/" and context.record_video_size={"width": 1280, "height":720}.
+
+IMPORTANT TIMING: The script should create a video that is approximately 2 minutes long.
+- Each action (click, type, navigate) takes 3-5 seconds on screen
+- Add page.wait_for_timeout() calls between actions to let content be visible (typically 2000-4000ms)
+- Target 24-40 total actions to fill 2 minutes
+- The video timing should synchronize with a ~2 minute voice narration
+- Include longer pauses (3-5 seconds) after important sections to let information sink in
 
 Requirements:
 1. Use async Playwright with Python
 2. Include proper imports and setup
-3. Add appropriate waits and error handling
+3. Add appropriate waits and error handling - use page.wait_for_timeout() liberally
 4. Include comments explaining each step
 5. Make the script record video to 'output.webm' file
 6. Return ONLY the Python code, no explanations
 7. Use proper selectors (prefer data-testid, then role, then css)
 8. Handle common issues like popups, cookies, etc.
 9. The script MUST save video as 'output.webm' in current directory
+10. Pace the actions to create a ~2 minute video that matches the voice narration timing
 """
         )
 
