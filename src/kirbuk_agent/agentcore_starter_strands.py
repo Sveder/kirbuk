@@ -25,6 +25,8 @@ MODEL_ID = "eu.anthropic.claude-sonnet-4-20250514-v1:0"
 KIRBUK_BROWSER_IDENTIFIER = "kirbuk_browser_tool-l2a6PWdtMy"
 S3_BUCKET = "sveder-kirbuk"
 S3_STAGING_PREFIX = "staging_area"
+NOTIFICATION_EMAIL = os.getenv("NOTIFICATION_EMAIL", "sveder@gmail.com")  # Email to send notifications to
+SOURCE_EMAIL = os.getenv("SOURCE_EMAIL", "sveder@gmail.com")  # Verified SES sender email
 
 SYSTEM_PROMPT = """You are an agent that goes over SaaS products and helps create demo videos.
 You will be given a website URL and instruction and you will need to explore the website and understand
@@ -233,6 +235,63 @@ def save_voice_script_to_s3(voice_script, submission_id):
     except Exception as e:
         print(f"Error saving voice script to S3: {e}")
         raise
+
+
+def send_email_notification(subject, body, submission_id=None):
+    """Send email notification using AWS SES"""
+    try:
+        ses_client = boto3.client('ses', region_name=REGION)
+
+        # Build the email body
+        html_body = f"""<html>
+<head></head>
+<body>
+<h2>{subject}</h2>
+<p>{body}</p>
+"""
+        if submission_id:
+            status_url = f"https://kirbuk.com/submission/{submission_id}"
+            html_body += f'<p><a href="{status_url}">View submission status: {status_url}</a></p>'
+
+        html_body += """</body>
+</html>"""
+
+        text_body = f"{subject}\n\n{body}"
+        if submission_id:
+            text_body += f"\n\nView submission status: https://kirbuk.com/submission/{submission_id}"
+
+        response = ses_client.send_email(
+            Source=SOURCE_EMAIL,
+            Destination={
+                'ToAddresses': [NOTIFICATION_EMAIL]
+            },
+            Message={
+                'Subject': {
+                    'Data': subject,
+                    'Charset': 'UTF-8'
+                },
+                'Body': {
+                    'Text': {
+                        'Data': text_body,
+                        'Charset': 'UTF-8'
+                    },
+                    'Html': {
+                        'Data': html_body,
+                        'Charset': 'UTF-8'
+                    }
+                }
+            }
+        )
+
+        print(f"✓ Email sent successfully: {subject}")
+        print(f"  Message ID: {response['MessageId']}")
+        return response
+
+    except Exception as e:
+        print(f"✗ Error sending email: {e}")
+        # Don't fail the workflow if email fails
+        import traceback
+        print(f"Email error traceback: {traceback.format_exc()}")
 
 
 def synthesize_voice_with_polly(voice_script, submission_id):
@@ -580,11 +639,19 @@ def invoke(payload, context):
 
         # Extract submission_id from payload
         submission_id = payload.get('submission_id') if isinstance(payload, dict) else None
+        product_url = payload.get('product_url', 'Unknown URL') if isinstance(payload, dict) else 'Unknown URL'
 
         if submission_id:
             # Save payload to S3
             s3_key = save_payload_to_s3(payload, submission_id)
             print(f"Payload saved to S3: {s3_key}")
+
+            # Send email notification that processing has started
+            send_email_notification(
+                subject="Kirbuk: Demo Video Generation Started",
+                body=f"Demo video generation has started for {product_url}",
+                submission_id=submission_id
+            )
         else:
             print("Warning: No submission_id found in payload, skipping S3 save")
 
@@ -705,6 +772,14 @@ def invoke(payload, context):
         print(f"Submission ID: {submission_id}")
         print("=" * 80)
 
+        # Send success email notification
+        if submission_id:
+            send_email_notification(
+                subject="Kirbuk: Demo Video Generation Complete",
+                body=f"Demo video has been successfully generated for {product_url}",
+                submission_id=submission_id
+            )
+
         return {"response": response}
 
     except Exception as e:
@@ -713,6 +788,16 @@ def invoke(payload, context):
         print("=" * 80)
         print(f"Error: {str(e)}")
         print("=" * 80)
+
+        # Send failure email notification
+        submission_id = payload.get('submission_id') if isinstance(payload, dict) else None
+        product_url = payload.get('product_url', 'Unknown URL') if isinstance(payload, dict) else 'Unknown URL'
+        if submission_id:
+            send_email_notification(
+                subject="Kirbuk: Demo Video Generation Failed",
+                body=f"Demo video generation failed for {product_url}\n\nError: {str(e)}",
+                submission_id=submission_id
+            )
 
         # Capture exception in Sentry with context
         sentry_sdk.set_context("payload", payload)
