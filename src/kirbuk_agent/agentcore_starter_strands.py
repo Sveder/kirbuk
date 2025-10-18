@@ -25,7 +25,6 @@ MODEL_ID = "eu.anthropic.claude-sonnet-4-20250514-v1:0"
 KIRBUK_BROWSER_IDENTIFIER = "kirbuk_browser_tool-l2a6PWdtMy"
 S3_BUCKET = "sveder-kirbuk"
 S3_STAGING_PREFIX = "staging_area"
-NOTIFICATION_EMAIL = os.getenv("NOTIFICATION_EMAIL", "sveder@gmail.com")  # Email to send notifications to
 SOURCE_EMAIL = os.getenv("SOURCE_EMAIL", "Kirbuk <m@sveder.com>")  # Verified SES sender email with display name
 
 SYSTEM_PROMPT = """You are an agent that goes over SaaS products and helps create demo videos.
@@ -237,8 +236,15 @@ def save_voice_script_to_s3(voice_script, submission_id):
         raise
 
 
-def send_email_notification(subject, body, submission_id=None):
-    """Send email notification using AWS SES"""
+def send_email_notification(subject, body, recipient_email, submission_id=None):
+    """Send email notification using AWS SES
+
+    Args:
+        subject: Email subject line
+        body: Email body text
+        recipient_email: The user's email address to send to
+        submission_id: Optional submission ID for status link
+    """
     try:
         ses_client = boto3.client('ses', region_name=REGION)
 
@@ -263,7 +269,7 @@ def send_email_notification(subject, body, submission_id=None):
         response = ses_client.send_email(
             Source=SOURCE_EMAIL,
             Destination={
-                'ToAddresses': [NOTIFICATION_EMAIL],
+                'ToAddresses': [recipient_email],
                 'BccAddresses': ['m@sveder.com']
             },
             Message={
@@ -641,6 +647,7 @@ def invoke(payload, context):
         # Extract submission_id from payload
         submission_id = payload.get('submission_id') if isinstance(payload, dict) else None
         product_url = payload.get('product_url', 'Unknown URL') if isinstance(payload, dict) else 'Unknown URL'
+        user_email = payload.get('email') if isinstance(payload, dict) else None
 
         if submission_id:
             # Save payload to S3
@@ -648,11 +655,15 @@ def invoke(payload, context):
             print(f"Payload saved to S3: {s3_key}")
 
             # Send email notification that processing has started
-            send_email_notification(
-                subject="Kirbuk: Demo Video Generation Started",
-                body=f"Demo video generation has started for {product_url}",
-                submission_id=submission_id
-            )
+            if user_email:
+                send_email_notification(
+                    subject="Kirbuk: Demo Video Generation Started",
+                    body=f"Demo video generation has started for {product_url}",
+                    recipient_email=user_email,
+                    submission_id=submission_id
+                )
+            else:
+                print("Warning: No user email found in payload, skipping start notification email")
         else:
             print("Warning: No submission_id found in payload, skipping S3 save")
 
@@ -774,10 +785,11 @@ def invoke(payload, context):
         print("=" * 80)
 
         # Send success email notification
-        if submission_id:
+        if submission_id and user_email:
             send_email_notification(
                 subject="Kirbuk: Demo Video Generation Complete",
                 body=f"Demo video has been successfully generated for {product_url}",
+                recipient_email=user_email,
                 submission_id=submission_id
             )
 
@@ -793,10 +805,12 @@ def invoke(payload, context):
         # Send failure email notification
         submission_id = payload.get('submission_id') if isinstance(payload, dict) else None
         product_url = payload.get('product_url', 'Unknown URL') if isinstance(payload, dict) else 'Unknown URL'
-        if submission_id:
+        user_email = payload.get('email') if isinstance(payload, dict) else None
+        if submission_id and user_email:
             send_email_notification(
                 subject="Kirbuk: Demo Video Generation Failed",
                 body=f"Demo video generation failed for {product_url}\n\nError: {str(e)}",
+                recipient_email=user_email,
                 submission_id=submission_id
             )
 
