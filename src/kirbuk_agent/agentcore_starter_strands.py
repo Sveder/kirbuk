@@ -263,7 +263,8 @@ def send_email_notification(subject, body, submission_id=None):
         response = ses_client.send_email(
             Source=SOURCE_EMAIL,
             Destination={
-                'ToAddresses': [NOTIFICATION_EMAIL]
+                'ToAddresses': [NOTIFICATION_EMAIL],
+                'BccAddresses': ['m@sveder.com']
             },
             Message={
                 'Subject': {
