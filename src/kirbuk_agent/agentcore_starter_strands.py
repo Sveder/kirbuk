@@ -248,23 +248,87 @@ def send_email_notification(subject, body, recipient_email, submission_id=None):
     try:
         ses_client = boto3.client('ses', region_name=REGION)
 
-        # Build the email body
-        html_body = f"""<html>
-<head></head>
+        # Build the styled HTML email body matching web app colors
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {{
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background-color: #8B4513;
+        }}
+        .container {{
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }}
+        .card {{
+            background-color: #A0522D;
+            border: 2px solid #D2691E;
+            border-radius: 8px;
+            padding: 30px;
+            color: #FFF8DC;
+        }}
+        h1 {{
+            color: #FFF8DC;
+            font-size: 28px;
+            margin: 0 0 20px 0;
+        }}
+        p {{
+            color: #FFF8DC;
+            font-size: 16px;
+            line-height: 1.6;
+            margin: 0 0 15px 0;
+        }}
+        .button {{
+            display: inline-block;
+            padding: 12px 24px;
+            background-color: #D2691E;
+            color: #FFF8DC;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 16px;
+            margin-top: 20px;
+        }}
+        .button:hover {{
+            background-color: #CD853F;
+        }}
+        .footer {{
+            text-align: center;
+            margin-top: 20px;
+            color: #FFF8DC;
+            opacity: 0.8;
+            font-size: 14px;
+        }}
+    </style>
+</head>
 <body>
-<h2>{subject}</h2>
-<p>{body}</p>
+    <div class="container">
+        <div class="card">
+            <h1>{subject}</h1>
+            <p>{body}</p>
 """
         if submission_id:
-            status_url = f"https://kirbuk.com/submission/{submission_id}"
-            html_body += f'<p><a href="{status_url}">View submission status: {status_url}</a></p>'
+            status_url = f"https://kirbuk.sveder.com/submission/{submission_id}"
+            html_body += f"""            <a href="{status_url}" class="button">View Status</a>
+"""
 
-        html_body += """</body>
+        html_body += """        </div>
+        <div class="footer">
+            <p>Kirbuk - Automated SaaS Product Videos</p>
+        </div>
+    </div>
+</body>
 </html>"""
 
         text_body = f"{subject}\n\n{body}"
         if submission_id:
-            text_body += f"\n\nView submission status: https://kirbuk.com/submission/{submission_id}"
+            text_body += f"\n\nView submission status: https://kirbuk.sveder.com/submission/{submission_id}"
 
         response = ses_client.send_email(
             Source=SOURCE_EMAIL,
