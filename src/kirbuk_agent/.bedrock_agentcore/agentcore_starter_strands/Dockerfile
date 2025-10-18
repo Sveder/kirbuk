@@ -8,7 +8,8 @@ ENV UV_SYSTEM_PYTHON=1 \
     PYTHONUNBUFFERED=1 \
     DOCKER_CONTAINER=1 \
     AWS_REGION=eu-central-1 \
-    AWS_DEFAULT_REGION=eu-central-1
+    AWS_DEFAULT_REGION=eu-central-1 \
+    DISPLAY=:99
 
 # Install system dependencies for Playwright and FFmpeg
 RUN apt-get update && apt-get install -y \
@@ -36,6 +37,8 @@ RUN apt-get update && apt-get install -y \
     libu2f-udev \
     libvulkan1 \
     ffmpeg \
+    xvfb \
+    dbus-x11 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt requirements.txt
@@ -65,6 +68,24 @@ EXPOSE 8080
 # Copy entire project (respecting .dockerignore)
 COPY . .
 
-# Use the full module path
+# Create startup script to run Xvfb and the application
+USER root
+RUN echo '#!/bin/bash\n\
+# Start Xvfb in the background\n\
+Xvfb :99 -screen 0 1280x720x24 -ac -nolisten tcp -nolisten unix &\n\
+XVFB_PID=$!\n\
+\n\
+# Wait for Xvfb to be ready\n\
+sleep 2\n\
+\n\
+# Start dbus\n\
+dbus-daemon --system --fork 2>/dev/null || true\n\
+\n\
+# Run the application\n\
+exec opentelemetry-instrument python -m agentcore_starter_strands\n\
+' > /app/start.sh && chmod +x /app/start.sh
 
-CMD ["opentelemetry-instrument", "python", "-m", "agentcore_starter_strands"]
+USER bedrock_agentcore
+
+# Use the full module path
+CMD ["/app/start.sh"]
