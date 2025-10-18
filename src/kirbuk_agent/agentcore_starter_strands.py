@@ -714,7 +714,30 @@ def invoke(payload, context):
         user_email = payload.get('email') if isinstance(payload, dict) else None
 
         if submission_id:
-            # Save payload to S3
+            # Check if this submission has already been processed by checking if JSON file exists
+            s3_client = boto3.client('s3', region_name=REGION)
+            json_key = f"{S3_STAGING_PREFIX}/{submission_id}/{submission_id}.json"
+
+            try:
+                s3_client.head_object(Bucket=S3_BUCKET, Key=json_key)
+                # File exists, this submission has already been processed
+                print("=" * 80)
+                print("⚠️  DUPLICATE INVOCATION DETECTED")
+                print("=" * 80)
+                print(f"Submission {submission_id} has already been processed (JSON file exists)")
+                print("Exiting to avoid duplicate work and duplicate emails")
+                print("=" * 80)
+                return {"response": "Duplicate invocation - already processed", "duplicate": True}
+            except s3_client.exceptions.NoSuchKey:
+                # File doesn't exist, this is the first invocation - continue processing
+                print("✓ First invocation for this submission - proceeding with processing")
+                pass
+            except Exception as check_error:
+                # If we can't check, proceed anyway to avoid blocking legitimate requests
+                print(f"Warning: Could not check for duplicate: {check_error}")
+                pass
+
+            # Save payload to S3 (this marks the submission as being processed)
             s3_key = save_payload_to_s3(payload, submission_id)
             print(f"Payload saved to S3: {s3_key}")
 
