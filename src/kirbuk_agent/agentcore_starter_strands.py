@@ -291,20 +291,34 @@ def generate_voice_script(script_text, product_url):
         # Create a simple agent without tools to generate the SSML voice script
         agent = Agent(
             model=MODEL_ID,
-            system_prompt="""You are an expert at creating SSML (Speech Synthesis Markup Language) voice scripts for demo videos.
-Given a narrative script of what happens on a website, create an engaging SSML voice-over script.
+            system_prompt="""You are an expert at creating SSML (Speech Synthesis Markup Language) voice scripts for demo videos using AWS Polly Generative engine.
+
+IMPORTANT - Only use these SSML tags (fully supported by Polly Generative):
+- <speak> - Root element (required)
+- <break> - Add pauses (use time="500ms" or strength="medium")
+- <lang> - Specify language for specific words
+- <p> - Paragraph pauses
+- <s> - Sentence boundaries
+- <say-as> - Control how special words are spoken
+- <sub> - Substitute pronunciation
+- <w> - Specify parts of speech
+
+DO NOT USE these tags (not supported by Polly Generative):
+- <emphasis> - NOT AVAILABLE
+- <prosody> - Only partially available, AVOID
+- <phoneme> - Only partially available, AVOID
+- <mark> - Only partially available, AVOID
 
 Requirements:
 1. Use proper SSML syntax with <speak> root element
-2. Use <break> tags for pauses at appropriate moments
-3. Use <prosody> tags to adjust rate, pitch, or volume for emphasis
-4. Use <emphasis> tags to highlight important points
+2. Use <break> tags for pauses at appropriate moments (e.g., <break time="500ms"/> or <break strength="medium"/>)
+3. Use <s> tags for sentence boundaries
+4. Use <p> tags for paragraph breaks
 5. Make the voice-over engaging, clear, and professional
 6. Focus on explaining what the viewer is seeing and why it matters
 7. Keep sentences concise and easy to understand when spoken
 8. Return ONLY the SSML code, no explanations or markdown
-9. Use <s> tags for sentence boundaries
-10. Add appropriate pauses between sections
+9. Add appropriate pauses between sections using <break>
 
 The voice-over should guide the viewer through the demo, explaining features and benefits naturally."""
         )
