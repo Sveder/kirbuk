@@ -230,55 +230,81 @@ def save_voice_script_to_s3(voice_script, submission_id):
         raise
 
 
-def save_voice_audio_to_s3(audio_data, submission_id):
-    """Save the synthesized voice audio to S3 in the staging area"""
-    try:
-        s3_client = boto3.client('s3', region_name=REGION)
-
-        # Create the S3 key: staging_area/<uuid>/voice.mp3
-        s3_key = f"{S3_STAGING_PREFIX}/{submission_id}/voice.mp3"
-
-        # Upload to S3
-        s3_client.put_object(
-            Bucket=S3_BUCKET,
-            Key=s3_key,
-            Body=audio_data,
-            ContentType='audio/mpeg'
-        )
-
-        print(f"Successfully saved voice audio to s3://{S3_BUCKET}/{s3_key}")
-        return s3_key
-
-    except Exception as e:
-        print(f"Error saving voice audio to S3: {e}")
-        raise
-
-
 def synthesize_voice_with_polly(voice_script, submission_id):
-    """Synthesize voice from SSML script using AWS Polly with Matthew voice and generative engine"""
+    """Synthesize voice from SSML script using AWS Polly async API with Matthew voice and generative engine"""
+    import time
+
     try:
         polly_client = boto3.client('polly', region_name=REGION)
 
-        print("Synthesizing voice with AWS Polly (Matthew voice, generative engine)...")
+        print("Starting async voice synthesis with AWS Polly (Matthew voice, generative engine)...")
+        print(f"Voice script length: {len(voice_script)} characters")
 
-        # Synthesize speech using Polly
-        response = polly_client.synthesize_speech(
+        # Start asynchronous synthesis task
+        # Polly will write the MP3 directly to S3
+        response = polly_client.start_speech_synthesis_task(
             Engine='generative',  # Use generative engine for more natural speech
             VoiceId='Matthew',    # Male voice
             OutputFormat='mp3',
             TextType='ssml',
-            Text=voice_script
+            Text=voice_script,
+            OutputS3BucketName=S3_BUCKET,
+            OutputS3KeyPrefix=f"{S3_STAGING_PREFIX}/{submission_id}/"
         )
 
-        # Read the audio stream
-        audio_data = response['AudioStream'].read()
+        task_id = response['SynthesisTask']['TaskId']
+        print(f"Synthesis task started with ID: {task_id}")
 
-        print(f"Voice synthesis completed, audio size: {len(audio_data)} bytes")
+        # Poll for task completion
+        max_wait_time = 300  # 5 minutes max
+        poll_interval = 2    # Poll every 2 seconds
+        elapsed_time = 0
 
-        # Save to S3
-        s3_key = save_voice_audio_to_s3(audio_data, submission_id)
+        while elapsed_time < max_wait_time:
+            task_status = polly_client.get_speech_synthesis_task(TaskId=task_id)
+            task = task_status['SynthesisTask']
+            status = task['TaskStatus']
 
-        return s3_key
+            print(f"Synthesis status: {status} (elapsed: {elapsed_time}s)")
+
+            if status == 'completed':
+                output_uri = task['OutputUri']
+                print(f"✓ Voice synthesis completed successfully")
+                print(f"Output URI: {output_uri}")
+
+                # Extract the S3 key from the output URI
+                # Format: https://s3.region.amazonaws.com/bucket/key
+                # We need to construct our expected key
+                s3_key = f"{S3_STAGING_PREFIX}/{submission_id}/voice.mp3"
+
+                # Polly creates a file with task ID in name, we need to rename it
+                # The actual file is at: staging_area/<uuid>/<task_id>.mp3
+                polly_s3_key = f"{S3_STAGING_PREFIX}/{submission_id}/{task_id}.mp3"
+
+                # Copy to our expected filename
+                s3_client = boto3.client('s3', region_name=REGION)
+                s3_client.copy_object(
+                    Bucket=S3_BUCKET,
+                    CopySource={'Bucket': S3_BUCKET, 'Key': polly_s3_key},
+                    Key=s3_key
+                )
+                print(f"✓ Renamed synthesis output to: {s3_key}")
+
+                # Delete the original Polly file
+                s3_client.delete_object(Bucket=S3_BUCKET, Key=polly_s3_key)
+
+                return s3_key
+
+            elif status == 'failed':
+                reason = task.get('TaskStatusReason', 'Unknown reason')
+                raise Exception(f"Polly synthesis task failed: {reason}")
+
+            # Wait before next poll
+            time.sleep(poll_interval)
+            elapsed_time += poll_interval
+
+        # Timeout
+        raise Exception(f"Polly synthesis task timed out after {max_wait_time} seconds")
 
     except Exception as e:
         print(f"Error synthesizing voice with Polly: {e}")
