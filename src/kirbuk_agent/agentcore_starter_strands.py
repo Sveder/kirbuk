@@ -26,7 +26,7 @@ KIRBUK_BROWSER_IDENTIFIER = "kirbuk_browser_tool-l2a6PWdtMy"
 S3_BUCKET = "sveder-kirbuk"
 S3_STAGING_PREFIX = "staging_area"
 NOTIFICATION_EMAIL = os.getenv("NOTIFICATION_EMAIL", "sveder@gmail.com")  # Email to send notifications to
-SOURCE_EMAIL = os.getenv("SOURCE_EMAIL", "sveder@gmail.com")  # Verified SES sender email
+SOURCE_EMAIL = os.getenv("SOURCE_EMAIL", "Kirbuk <m@sveder.com>")  # Verified SES sender email with display name
 
 SYSTEM_PROMPT = """You are an agent that goes over SaaS products and helps create demo videos.
 You will be given a website URL and instruction and you will need to explore the website and understand
