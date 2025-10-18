@@ -4,7 +4,6 @@ from django.views.decorators.csrf import csrf_exempt
 import json
 import uuid
 import boto3
-import threading
 
 # Agent configuration
 AGENT_ARN = "arn:aws:bedrock-agentcore:eu-central-1:800622328366:runtime/agentcore_starter_strands-V5kqR7Ap5a"
@@ -13,8 +12,8 @@ S3_BUCKET = "sveder-kirbuk"
 S3_STAGING_PREFIX = "staging_area"
 
 
-def invoke_agent_async(data, submission_id):
-    """Invoke the agent asynchronously in a background thread"""
+def invoke_agent(data, submission_id):
+    """Invoke the agent (AWS handles async execution)"""
     try:
         agent_core_client = boto3.client('bedrock-agentcore', region_name=AWS_REGION)
 
@@ -25,10 +24,11 @@ def invoke_agent_async(data, submission_id):
         # Prepare the payload - send data directly without "input" wrapper
         payload = json.dumps(data)
 
-        print(f"Invoking agent asynchronously with session_id: {session_id}")
+        print(f"Invoking agent with session_id: {session_id}")
         print(f"Payload: {payload}")
 
-        # Invoke the agent
+        # Invoke the agent - AWS Bedrock handles the async execution
+        # This call returns quickly as the agent runs asynchronously in AWS
         response = agent_core_client.invoke_agent_runtime(
             agentRuntimeArn=AGENT_ARN,
             runtimeSessionId=session_id,
@@ -41,11 +41,13 @@ def invoke_agent_async(data, submission_id):
         response_data = json.loads(response_body)
 
         print(f"Agent invoked successfully. Response: {response_data}")
+        return True
 
     except Exception as agent_error:
-        print(f"Error invoking agent asynchronously: {agent_error}")
+        print(f"Error invoking agent: {agent_error}")
         import traceback
         print(f"Traceback: {traceback.format_exc()}")
+        return False
 
 
 def hello_world(request):
@@ -80,18 +82,20 @@ def submit_form(request):
         print(f"Roast Mode: {data.get('roast_mode')}")
         print("=" * 80)
 
-        # Start agent invocation in background thread
-        thread = threading.Thread(target=invoke_agent_async, args=(data, submission_id))
-        thread.daemon = True  # Daemon thread will not block app shutdown
-        thread.start()
+        # Invoke the agent directly (AWS handles async execution)
+        # This returns quickly, so no need for background thread
+        success = invoke_agent(data, submission_id)
 
-        print(f"Agent invocation started asynchronously for submission {submission_id}")
+        if success:
+            print(f"✓ Agent invocation request submitted successfully for {submission_id}")
+        else:
+            print(f"✗ Agent invocation failed for {submission_id}")
 
-        # Return immediately without waiting for agent
+        # Return immediately - agent runs asynchronously in AWS
         return JsonResponse({
-            'success': True,
+            'success': success,
             'submission_id': submission_id,
-            'message': 'Form submitted successfully, agent processing in background'
+            'message': 'Form submitted successfully, video generation in progress' if success else 'Form submission failed'
         })
 
     except json.JSONDecodeError:
