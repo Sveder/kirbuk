@@ -27,11 +27,44 @@ S3_BUCKET = "sveder-kirbuk"
 S3_STAGING_PREFIX = "staging_area"
 SOURCE_EMAIL = os.getenv("SOURCE_EMAIL", "Kirbuk <m@sveder.com>")  # Verified SES sender email with display name
 
-SYSTEM_PROMPT = """You are an agent that goes over SaaS products and helps create demo videos.
+def get_exploration_system_prompt(roast_mode=False):
+    """Generate system prompt for website exploration based on mode
+
+    Args:
+        roast_mode: If True, use humorous/critical tone; if False, use professional tone
+
+    Returns:
+        System prompt string
+    """
+    tone_instructions = ""
+    if roast_mode:
+        tone_instructions = """
+TONE - ROAST MODE ENABLED:
+Your script should be HUMOROUS, SARCASTIC, and CRITICAL. This is "roast mode"!
+- Point out confusing UI/UX choices with humor
+- Make playful jokes about unnecessary complexity
+- Be witty about questionable design decisions
+- Comment sarcastically on things that don't work well
+- Still be informative, but with comedic flair
+- Keep it fun and entertaining, not mean-spirited
+- Example: "And here's where they hid the settings button... because who needs easy access to settings, right?"
+"""
+    else:
+        tone_instructions = """
+TONE - PROFESSIONAL MODE:
+Your script should be PROFESSIONAL, INFORMATIVE, and POSITIVE.
+- Highlight features and benefits
+- Explain functionality clearly
+- Maintain an encouraging, helpful tone
+- Focus on what works well
+"""
+
+    return f"""You are an agent that goes over SaaS products and helps create demo videos.
 You will be given a website URL and instruction and you will need to explore the website and understand
 what is the user flow through it and main functionality.
 
 Your response should be a script for what to do on website to best showcase the main features.
+{tone_instructions}
 
 IMPORTANT TIMING: Create a script that will take approximately 2 minutes to demonstrate.
 - Include enough steps to fill 2 minutes of screen time
@@ -527,13 +560,14 @@ def synthesize_voice_with_polly(voice_script, submission_id):
         raise
 
 
-def generate_voice_script(script_text, product_url, video_duration_seconds=120):
+def generate_voice_script(script_text, product_url, video_duration_seconds=120, roast_mode=False):
     """Generate an SSML voice script from the narrative script
 
     Args:
         script_text: The narrative script from browser exploration
         product_url: URL of the product being demoed
         video_duration_seconds: Exact duration of the video in seconds (default 120)
+        roast_mode: If True, use humorous/sarcastic tone; if False, use professional tone
 
     Returns:
         SSML voice script string
@@ -543,6 +577,27 @@ def generate_voice_script(script_text, product_url, video_duration_seconds=120):
         minutes = video_duration_seconds / 60
         target_words_min = int(130 * minutes)
         target_words_max = int(150 * minutes)
+
+        # Add tone instructions based on mode
+        tone_instructions = ""
+        if roast_mode:
+            tone_instructions = """
+TONE - ROAST MODE:
+- Use a HUMOROUS, SARCASTIC, and WITTY tone
+- Point out funny quirks and questionable design choices
+- Be playfully critical while still being informative
+- Add comedic commentary and jokes
+- Keep it entertaining and fun, not mean
+- Example tone: "And here we have... wait for it... another settings menu. Because one wasn't enough!"
+"""
+        else:
+            tone_instructions = """
+TONE - PROFESSIONAL MODE:
+- Use a PROFESSIONAL, CLEAR, and POSITIVE tone
+- Focus on features and benefits
+- Be encouraging and helpful
+- Maintain an informative, friendly delivery
+"""
 
         # Create a simple agent without tools to generate the SSML voice script
         agent = Agent(
@@ -555,6 +610,7 @@ Your narration MUST match this exact duration:
 - Include strategic pauses to allow viewers to absorb what they're seeing
 - The narration should fill the entire video duration without going over
 - Use <break> tags to add pauses and stretch the narration to match the video length
+{tone_instructions}
 
 IMPORTANT - Only use these SSML tags (fully supported by Polly Generative):
 - <speak> - Root element (required)
@@ -878,10 +934,14 @@ def invoke(payload, context):
             identifier=KIRBUK_BROWSER_IDENTIFIER
         )
 
+        # Get roast mode from payload
+        roast_mode = payload.get('roast_mode', False)
+        print(f"🎭 Roast Mode: {'ENABLED - Spicy commentary activated!' if roast_mode else 'Disabled - Professional tone'}")
+
         # Create agent without memory session manager to avoid throttling
         agent = Agent(
             model=MODEL_ID,
-            system_prompt=SYSTEM_PROMPT,
+            system_prompt=get_exploration_system_prompt(roast_mode),
             tools=[browser_tool.browser]
         )
 
@@ -968,7 +1028,7 @@ def invoke(payload, context):
             print("=" * 80)
             voice_script = None
             try:
-                voice_script = generate_voice_script(response, payload['product_url'], video_duration)
+                voice_script = generate_voice_script(response, payload['product_url'], video_duration, roast_mode)
                 print(f"✓ Voice script generated ({len(voice_script)} characters)")
 
                 voice_script_s3_key = save_voice_script_to_s3(voice_script, submission_id)
