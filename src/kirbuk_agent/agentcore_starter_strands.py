@@ -612,7 +612,7 @@ Your narration MUST match this exact duration:
 - Use <break> tags to add pauses and stretch the narration to match the video length
 {tone_instructions}
 
-IMPORTANT - Only use these SSML tags (fully supported by Polly Generative):
+CRITICAL - ONLY use these SSML tags (fully supported by Polly Generative):
 - <speak> - Root element (required)
 - <break> - Add pauses (use time="500ms" or strength="medium")
 - <lang> - Specify language for specific words
@@ -622,11 +622,18 @@ IMPORTANT - Only use these SSML tags (fully supported by Polly Generative):
 - <sub> - Substitute pronunciation
 - <w> - Specify parts of speech
 
-DO NOT USE these tags (not supported by Polly Generative):
-- <emphasis> - NOT AVAILABLE
-- <prosody> - Only partially available, AVOID
-- <phoneme> - Only partially available, AVOID
-- <mark> - Only partially available, AVOID
+ABSOLUTELY DO NOT USE these tags (WILL CAUSE ERRORS):
+- <emphasis> - NOT SUPPORTED - will cause InvalidSsmlException
+- <prosody> - NOT SUPPORTED - will cause InvalidSsmlException
+- <phoneme> - NOT SUPPORTED - will cause InvalidSsmlException
+- <mark> - NOT SUPPORTED - will cause InvalidSsmlException
+- <amazon:effect> - NOT SUPPORTED - will cause InvalidSsmlException
+- <amazon:domain> - NOT SUPPORTED - will cause InvalidSsmlException
+- <amazon:emotion> - NOT SUPPORTED - will cause InvalidSsmlException
+- <amazon:auto-breaths> - NOT SUPPORTED - will cause InvalidSsmlException
+
+If you need emphasis, use natural language and word choice instead of <emphasis> tags.
+If you need prosody changes, use natural phrasing and punctuation instead of <prosody> tags.
 
 Requirements:
 1. Use proper SSML syntax with <speak> root element
@@ -669,6 +676,29 @@ Return only the SSML code, nothing else."""
         if '<speak>' not in voice_script:
             # Wrap in speak tags if missing
             voice_script = voice_script.replace('<?xml version="1.0"?>\n', '<?xml version="1.0"?>\n<speak>\n') + '\n</speak>'
+
+        # Sanitize SSML - remove tags that are NOT supported by Polly Generative
+        import re
+
+        # Tags to remove completely (not supported by Polly Generative)
+        unsupported_tags = [
+            'emphasis',
+            'prosody',
+            'phoneme',
+            'mark',
+            'amazon:effect',
+            'amazon:domain',
+            'amazon:emotion',
+            'amazon:auto-breaths'
+        ]
+
+        for tag in unsupported_tags:
+            # Remove opening tags with any attributes
+            voice_script = re.sub(rf'<{tag}[^>]*>', '', voice_script, flags=re.IGNORECASE)
+            # Remove closing tags
+            voice_script = re.sub(rf'</{tag}>', '', voice_script, flags=re.IGNORECASE)
+
+        print(f"✓ SSML sanitized - removed unsupported tags")
 
         return voice_script
 
