@@ -79,6 +79,9 @@ EXPOSE 8080
 # Copy entire project (respecting .dockerignore)
 COPY . .
 
+# Ensure background music directory exists (will be populated from git)
+RUN mkdir -p /app/audio/bg_music
+
 # Create startup script to run Xvfb and the application
 USER root
 RUN echo '#!/bin/bash\n\

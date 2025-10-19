@@ -209,8 +209,78 @@ def save_video_to_s3(video_path, submission_id):
         raise
 
 
+def merge_audio_video_with_music(video_path, audio_path, music_path, output_path,
+                                  voice_volume=1.0, music_volume=0.15):
+    """Merge video, voice audio, and background music with volume control
+
+    Args:
+        video_path: Path to the input video file (webm)
+        audio_path: Path to the voice audio file (mp3)
+        music_path: Path to the background music file (mp3)
+        output_path: Path for the output video file (webm with audio)
+        voice_volume: Volume level for voice (default 1.0 = 100%)
+        music_volume: Volume level for background music (default 0.15 = 15%)
+
+    Returns:
+        Path to the output file
+    """
+    import subprocess
+
+    try:
+        print(f"Merging video, voice, and background music with FFmpeg...")
+        print(f"Video: {video_path}")
+        print(f"Voice: {audio_path} (volume: {voice_volume})")
+        print(f"Music: {music_path} (volume: {music_volume})")
+        print(f"Output: {output_path}")
+
+        # FFmpeg command to merge video with mixed audio (voice + background music)
+        # Filter complex:
+        # 1. Apply volume to voice track
+        # 2. Apply volume to music track and loop it
+        # 3. Mix both audio tracks together
+        cmd = [
+            'ffmpeg',
+            '-i', video_path,                    # Input 0: video
+            '-i', audio_path,                    # Input 1: voice
+            '-stream_loop', '-1',                # Loop music indefinitely
+            '-i', music_path,                    # Input 2: background music
+            '-filter_complex',
+            f'[1:a]volume={voice_volume}[voice];'  # Voice at specified volume
+            f'[2:a]volume={music_volume}[music];'  # Music at specified volume
+            '[voice][music]amix=inputs=2:duration=first[audio]',  # Mix both, use voice duration
+            '-map', '0:v',                       # Use video from input 0
+            '-map', '[audio]',                   # Use mixed audio
+            '-c:v', 'copy',                      # Copy video without re-encoding
+            '-c:a', 'libopus',                   # Encode audio to Opus for WebM
+            '-shortest',                         # Match shortest stream duration
+            '-y',                                # Overwrite output file if exists
+            output_path
+        ]
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=120  # 2 minute timeout
+        )
+
+        if result.returncode != 0:
+            print(f"FFmpeg stderr: {result.stderr}")
+            raise Exception(f"FFmpeg failed with return code {result.returncode}: {result.stderr}")
+
+        print(f"✓ Successfully merged video with voice and background music: {output_path}")
+        return output_path
+
+    except subprocess.TimeoutExpired:
+        print("FFmpeg audio mixing timed out after 2 minutes")
+        raise Exception("Audio mixing timed out")
+    except Exception as e:
+        print(f"Error merging audio and video with music: {e}")
+        raise
+
+
 def merge_audio_video_with_ffmpeg(video_path, audio_path, output_path):
-    """Merge audio and video files using FFmpeg
+    """Merge audio and video files using FFmpeg (without background music)
 
     Args:
         video_path: Path to the input video file (webm)
@@ -1125,10 +1195,13 @@ def invoke(payload, context):
 
                     # STEP 7: Merge audio with video now that both exist
                     print("\n" + "=" * 80)
-                    print("STEP 7: Merging audio with video")
+                    print("STEP 7: Merging audio with video and background music")
                     print("=" * 80)
                     try:
                         import tempfile
+                        import random
+                        import glob
+
                         with tempfile.TemporaryDirectory() as temp_dir:
                             s3_client = boto3.client('s3', region_name=REGION)
 
@@ -1144,11 +1217,35 @@ def invoke(payload, context):
                             s3_client.download_file(S3_BUCKET, voice_audio_s3_key, audio_path)
                             print(f"✓ Audio downloaded (size: {os.path.getsize(audio_path)} bytes)")
 
-                            # Merge them
+                            # Select random background music
+                            music_dir = '/app/audio/bg_music'
+                            music_files = glob.glob(os.path.join(music_dir, '*.mp3'))
+
                             merged_video_path = os.path.join(temp_dir, 'merged.webm')
-                            print(f"→ Merging audio and video with FFmpeg...")
-                            merge_audio_video_with_ffmpeg(video_path, audio_path, merged_video_path)
-                            print(f"✓ Audio and video merged (size: {os.path.getsize(merged_video_path)} bytes)")
+
+                            if music_files:
+                                # Randomly select a background music file
+                                selected_music = random.choice(music_files)
+                                music_name = os.path.basename(selected_music)
+                                print(f"🎵 Selected background music: {music_name}")
+
+                                # Merge video, voice, and background music
+                                print(f"→ Merging video, voice, and background music with FFmpeg...")
+                                merge_audio_video_with_music(
+                                    video_path,
+                                    audio_path,
+                                    selected_music,
+                                    merged_video_path,
+                                    voice_volume=1.0,    # Voice at 100%
+                                    music_volume=0.15    # Background music at 15%
+                                )
+                                print(f"✓ Video merged with voice and background music (size: {os.path.getsize(merged_video_path)} bytes)")
+                            else:
+                                # No background music available, merge without it
+                                print(f"⚠️  No background music files found in {music_dir}")
+                                print(f"→ Merging video and voice only...")
+                                merge_audio_video_with_ffmpeg(video_path, audio_path, merged_video_path)
+                                print(f"✓ Audio and video merged (size: {os.path.getsize(merged_video_path)} bytes)")
 
                             # Upload merged video back to S3 (overwrite the old one)
                             print(f"→ Uploading merged video to S3...")
