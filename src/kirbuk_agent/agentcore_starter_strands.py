@@ -45,6 +45,18 @@ CRITICAL - WHEN TO STOP EXPLORING:
 - If you've seen the main features, FINISH your exploration and provide the script
 - You should spend no more than 5-10 minutes total on exploration
 
+IMPORTANT - CAPTURE DETAILED SELECTOR INFORMATION:
+When exploring the website, pay close attention to interactive elements and note:
+- Visible button text and labels (e.g., "Sign Up", "Get Started", "Add to Cart")
+- Placeholder text in input fields (e.g., "Enter your email", "Search...")
+- ARIA labels and roles when visible (e.g., role="button", aria-label="Close")
+- Unique identifiers like data-testid attributes when present
+- Descriptive class names that indicate purpose (e.g., "login-button", "nav-menu", "submit-form")
+- Element types and their context (e.g., "the blue button in the top right", "first input in the form")
+
+In your final script, include this selector information to help create robust Playwright scripts.
+For example, instead of just saying "click the submit button", say "click the submit button (text='Submit' or button with class 'submit-btn')".
+
 More rules:
 1. If the site throws an error, note it but continue your exploration.
 2. If you find settings - look at them but do not try to change settings.
@@ -54,6 +66,7 @@ More rules:
 6. If there is a documentation page - look at main page only and don't read all the docs. Definitely don't search the logs.
 7. Don't stop with errors ever. Instead restart and try again once and if not just stop regularly with suitable message.
 8. After 10-15 actions, you MUST stop exploring and write your final demo script - do not continue clicking endlessly.
+9. When describing interactive elements in your script, always include multiple selector options (text, role, class, placeholder) to make Playwright scripts more reliable.
 """
 
 ci_sessions = {}
@@ -564,6 +577,32 @@ IMPORTANT TIMING: The script should create a video that is approximately 2 minut
 - The video timing should synchronize with a ~2 minute voice narration
 - Include longer pauses (3-5 seconds) after important sections to let information sink in
 
+CRITICAL - ROBUST SELECTOR STRATEGIES:
+When the narrative script provides selector hints (text, class names, roles, placeholders), use a fallback approach:
+1. First, try the most specific selector (data-testid, id, or specific text)
+2. Add try/except blocks with alternative selectors as fallbacks
+3. Use .first when multiple elements might match
+4. Add wait_for(state="visible") before clicking/typing
+5. Use role-based selectors when mentioned (e.g., getByRole('button', name='Submit'))
+
+Example robust selector approach:
+```python
+try:
+    # Try specific selector first
+    button = page.locator("button:has-text('Sign Up')").first
+    await button.wait_for(state="visible", timeout=5000)
+    await button.click()
+except:
+    # Fallback to class or role
+    try:
+        button = page.locator(".signup-btn, [role='button']:has-text('Sign')").first
+        await button.click()
+    except:
+        # Final fallback - find any button with partial text
+        button = page.get_by_role("button", name=re.compile("sign.*up", re.I)).first
+        await button.click()
+```
+
 Requirements:
 1. Use async Playwright with Python
 2. Include proper imports and setup
@@ -571,13 +610,16 @@ Requirements:
 4. Include comments explaining each step
 5. Make the script record video to 'output.webm' file
 6. Return ONLY the Python code, no explanations
-7. Use proper selectors (prefer data-testid, then role, then css)
+7. Use multiple selector strategies with fallbacks (text > role > class > generic)
 8. Handle common issues like popups, cookies, etc.
 9. The script MUST save video as 'output.webm' in current directory
 10. Pace the actions to create a ~2 minute video that matches the voice narration timing
 11. Set browser locale to English and include Accept-Language header to ensure website displays in English:
     - Use locale='en-US' in browser.new_context()
     - Set extra_http_headers={'Accept-Language': 'en-US,en;q=0.9'} in browser.new_context()
+12. Always use .first when selecting elements to avoid ambiguous locator errors
+13. Add generous timeouts (5-10 seconds) for element visibility checks
+14. If script gets stuck, it should gracefully continue instead of failing completely
 """
         )
 
