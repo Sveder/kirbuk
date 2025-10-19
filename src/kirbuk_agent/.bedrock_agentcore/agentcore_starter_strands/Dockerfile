@@ -42,17 +42,13 @@ RUN apt-get update && apt-get install -y \
     fontconfig \
     && rm -rf /var/lib/apt/lists/*
 
-# Install comprehensive international fonts for proper character rendering
+# Install essential international fonts for proper character rendering
 # This fixes Hebrew, Arabic, Japanese, Chinese, Korean and other language support
-RUN apt-get update && apt-get install -y \
-    fonts-noto \
+# Using minimal font set to stay under 1GB image size limit
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    fonts-noto-core \
     fonts-noto-cjk \
-    fonts-noto-color-emoji \
-    fonts-arphic-ukai \
-    fonts-arphic-uming \
-    fonts-ipafont-gothic \
-    fonts-ipafont-mincho \
-    fonts-unfonts-core \
+    fonts-noto-mono \
     && rm -rf /var/lib/apt/lists/* \
     && fc-cache -fv
 
