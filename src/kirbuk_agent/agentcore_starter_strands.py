@@ -806,37 +806,13 @@ def execute_playwright_script(playwright_code, submission_id):
             if not os.path.exists(video_path):
                 raise Exception("Video file 'output.webm' was not created by the script")
 
-            # Try to download audio from S3 and merge it with the video
+            # Note: Audio merging now happens in STEP 7 after voice synthesis
+            # This step only uploads the silent video
             print("\n" + "-" * 80)
-            print("STEP 6.1: Attempting to merge audio with video")
+            print("Note: Audio will be added later in STEP 7")
             print("-" * 80)
-            try:
-                s3_client = boto3.client('s3', region_name=REGION)
-                audio_s3_key = f"{S3_STAGING_PREFIX}/{submission_id}/voice.mp3"
-                audio_path = os.path.join(temp_dir, 'voice.mp3')
 
-                print(f"→ Downloading audio from S3: {audio_s3_key}")
-                s3_client.download_file(S3_BUCKET, audio_s3_key, audio_path)
-                print(f"✓ Audio downloaded successfully (size: {os.path.getsize(audio_path)} bytes)")
-
-                # Merge audio and video
-                merged_video_path = os.path.join(temp_dir, 'output_with_audio.webm')
-                print(f"→ Merging audio and video with FFmpeg...")
-                merge_audio_video_with_ffmpeg(video_path, audio_path, merged_video_path)
-
-                # Use the merged video as the final video
-                video_path = merged_video_path
-                print(f"✓ Audio and video merged successfully (size: {os.path.getsize(video_path)} bytes)")
-
-            except s3_client.exceptions.NoSuchKey:
-                print(f"⚠ No audio file found in S3 at {audio_s3_key}, uploading video without audio")
-            except Exception as merge_error:
-                print(f"✗ Error merging audio with video: {merge_error}")
-                print("⚠ Uploading video without audio")
-                import traceback
-                print(f"Audio merge traceback: {traceback.format_exc()}")
-
-            # Upload final video to S3
+            # Upload video to S3 (without audio for now)
             print("\n" + "-" * 80)
             print("STEP 6.2: Uploading final video to S3")
             print("-" * 80)
@@ -1041,16 +1017,57 @@ def invoke(payload, context):
                 try:
                     voice_audio_s3_key = synthesize_voice_with_polly(voice_script, submission_id)
                     print(f"✓ Voice audio synthesized and saved to S3: {voice_audio_s3_key}")
+
+                    # STEP 7: Merge audio with video now that both exist
+                    print("\n" + "=" * 80)
+                    print("STEP 7: Merging audio with video")
+                    print("=" * 80)
+                    try:
+                        import tempfile
+                        with tempfile.TemporaryDirectory() as temp_dir:
+                            s3_client = boto3.client('s3', region_name=REGION)
+
+                            # Download video from S3
+                            video_path = os.path.join(temp_dir, 'video.webm')
+                            print(f"→ Downloading video from S3: {video_s3_key}")
+                            s3_client.download_file(S3_BUCKET, video_s3_key, video_path)
+                            print(f"✓ Video downloaded (size: {os.path.getsize(video_path)} bytes)")
+
+                            # Download audio from S3
+                            audio_path = os.path.join(temp_dir, 'voice.mp3')
+                            print(f"→ Downloading audio from S3: {voice_audio_s3_key}")
+                            s3_client.download_file(S3_BUCKET, voice_audio_s3_key, audio_path)
+                            print(f"✓ Audio downloaded (size: {os.path.getsize(audio_path)} bytes)")
+
+                            # Merge them
+                            merged_video_path = os.path.join(temp_dir, 'merged.webm')
+                            print(f"→ Merging audio and video with FFmpeg...")
+                            merge_audio_video_with_ffmpeg(video_path, audio_path, merged_video_path)
+                            print(f"✓ Audio and video merged (size: {os.path.getsize(merged_video_path)} bytes)")
+
+                            # Upload merged video back to S3 (overwrite the old one)
+                            print(f"→ Uploading merged video to S3...")
+                            video_s3_key = save_video_to_s3(merged_video_path, submission_id)
+                            print(f"✓ Final video with audio uploaded to S3: {video_s3_key}")
+
+                    except Exception as merge_error:
+                        print(f"✗ Error merging audio with video: {merge_error}")
+                        import traceback
+                        print(f"Audio merge traceback: {traceback.format_exc()}")
+                        print("⚠️  Video uploaded without audio")
+
                 except Exception as polly_error:
                     print(f"✗ Error synthesizing voice with Polly: {polly_error}")
                     import traceback
                     print(f"Polly synthesis traceback: {traceback.format_exc()}")
+                    print("⚠️  Video will be uploaded without audio")
 
             except Exception as voice_error:
                 print(f"✗ Error generating voice script: {voice_error}")
                 # Don't fail the entire job if voice script generation fails
                 import traceback
                 print(f"Voice script generation traceback: {traceback.format_exc()}")
+                print("⚠️  Video will be uploaded without narration")
 
         print("\n" + "=" * 80)
         print("✅ WORKFLOW COMPLETED SUCCESSFULLY")
