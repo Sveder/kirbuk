@@ -172,10 +172,13 @@
                         Your browser does not support the video tag.
                     </video>
                     <div style="text-align: center;">
-                        <a id="download-video-btn" href="#" class="download-btn" download="demo-video.webm" style="display: none;">
+                        <button id="download-video-btn" class="download-btn" style="display: none; border: none; cursor: pointer;">
                             Download Video
-                        </a>
+                        </button>
                     </div>
+                    <p style="font-size: 0.85rem; opacity: 0.7; margin-top: 1rem; font-style: italic;">
+                        Note: Video and audio links are valid for 1 hour. If links expire, please refresh the page to generate new access links.
+                    </p>
                 </div>
 
                 <div id="voice-audio-content">
@@ -209,104 +212,136 @@
 
     <script>
         const submissionId = '{{ submission_id }}';
+        let pollingInterval = null;
 
-        function checkStatus() {
-            const interval = setInterval(async () => {
-                try {
-                    const response = await fetch(`/api/status/${submissionId}`);
-                    if (response.ok) {
-                        const status = await response.json();
+        async function updateStatus() {
+            try {
+                const response = await fetch(`/api/status/${submissionId}`);
+                if (response.ok) {
+                    const status = await response.json();
 
-                        // Update JSON status
-                        const jsonStatusEl = document.getElementById('json-status');
-                        if (status.json_created) {
-                            jsonStatusEl.textContent = '✅ Payload received and saved';
-                            jsonStatusEl.style.color = '#90EE90';
-                        }
+                    // Update JSON status
+                    const jsonStatusEl = document.getElementById('json-status');
+                    if (status.json_created) {
+                        jsonStatusEl.textContent = '✅ Payload received and saved';
+                        jsonStatusEl.style.color = '#90EE90';
+                    }
 
-                        // Update script status
-                        const scriptStatusEl = document.getElementById('script-status');
-                        const scriptContentDiv = document.getElementById('script-content');
+                    // Update script status
+                    const scriptStatusEl = document.getElementById('script-status');
+                    const scriptContentDiv = document.getElementById('script-content');
 
-                        if (status.script_created && status.script_content) {
-                            scriptStatusEl.textContent = '✅ Script created';
-                            scriptStatusEl.style.color = '#90EE90';
+                    if (status.script_created && status.script_content) {
+                        scriptStatusEl.textContent = '✅ Script created';
+                        scriptStatusEl.style.color = '#90EE90';
 
-                            // Show script content
-                            scriptContentDiv.style.display = 'block';
-                            scriptContentDiv.querySelector('pre').textContent = status.script_content;
-                        }
+                        // Show script content
+                        scriptContentDiv.style.display = 'block';
+                        scriptContentDiv.querySelector('pre').textContent = status.script_content;
+                    }
 
-                        // Update voice script status
-                        const voiceScriptStatusEl = document.getElementById('voice-script-status');
-                        const voiceScriptContentDiv = document.getElementById('voice-script-content');
+                    // Update voice script status
+                    const voiceScriptStatusEl = document.getElementById('voice-script-status');
+                    const voiceScriptContentDiv = document.getElementById('voice-script-content');
 
-                        if (status.voice_script_created && status.voice_script_content) {
-                            voiceScriptStatusEl.textContent = '✅ Voice script created';
-                            voiceScriptStatusEl.style.color = '#90EE90';
+                    if (status.voice_script_created && status.voice_script_content) {
+                        voiceScriptStatusEl.textContent = '✅ Voice script created';
+                        voiceScriptStatusEl.style.color = '#90EE90';
 
-                            // Show voice script content
-                            voiceScriptContentDiv.style.display = 'block';
-                            voiceScriptContentDiv.querySelector('pre').textContent = status.voice_script_content;
-                        }
+                        // Show voice script content
+                        voiceScriptContentDiv.style.display = 'block';
+                        voiceScriptContentDiv.querySelector('pre').textContent = status.voice_script_content;
+                    }
 
-                        // Update voice audio status
-                        const voiceAudioStatusEl = document.getElementById('voice-audio-status');
-                        const voiceAudioContentDiv = document.getElementById('voice-audio-content');
-                        const audioPlayer = document.getElementById('audio-player');
+                    // Update voice audio status
+                    const voiceAudioStatusEl = document.getElementById('voice-audio-status');
+                    const voiceAudioContentDiv = document.getElementById('voice-audio-content');
+                    const audioPlayer = document.getElementById('audio-player');
 
-                        if (status.voice_audio_created && status.voice_audio_url) {
-                            voiceAudioStatusEl.textContent = '✅ Voice audio synthesized';
-                            voiceAudioStatusEl.style.color = '#90EE90';
+                    if (status.voice_audio_created && status.voice_audio_url) {
+                        voiceAudioStatusEl.textContent = '✅ Voice audio synthesized';
+                        voiceAudioStatusEl.style.color = '#90EE90';
 
-                            // Show audio player with the synthesized voice
-                            voiceAudioContentDiv.style.display = 'block';
-                            audioPlayer.src = status.voice_audio_url;
-                        }
+                        // Show audio player with the synthesized voice
+                        voiceAudioContentDiv.style.display = 'block';
+                        audioPlayer.src = status.voice_audio_url;
+                    }
 
-                        // Update Playwright status
-                        const playwrightStatusEl = document.getElementById('playwright-status');
-                        const playwrightContentDiv = document.getElementById('playwright-content');
+                    // Update Playwright status
+                    const playwrightStatusEl = document.getElementById('playwright-status');
+                    const playwrightContentDiv = document.getElementById('playwright-content');
 
-                        if (status.playwright_created && status.playwright_content) {
-                            playwrightStatusEl.textContent = '✅ Playwright script created';
-                            playwrightStatusEl.style.color = '#90EE90';
+                    if (status.playwright_created && status.playwright_content) {
+                        playwrightStatusEl.textContent = '✅ Playwright script created';
+                        playwrightStatusEl.style.color = '#90EE90';
 
-                            // Show Playwright content
-                            playwrightContentDiv.style.display = 'block';
-                            playwrightContentDiv.querySelector('pre').textContent = status.playwright_content;
-                        }
+                        // Show Playwright content
+                        playwrightContentDiv.style.display = 'block';
+                        playwrightContentDiv.querySelector('pre').textContent = status.playwright_content;
+                    }
 
-                        // Update video status
-                        const videoStatusEl = document.getElementById('video-status');
-                        const videoContentDiv = document.getElementById('video-content');
-                        const videoPlayer = document.getElementById('video-player');
-                        const downloadBtn = document.getElementById('download-video-btn');
+                    // Update video status
+                    const videoStatusEl = document.getElementById('video-status');
+                    const videoContentDiv = document.getElementById('video-content');
+                    const videoPlayer = document.getElementById('video-player');
+                    const downloadBtn = document.getElementById('download-video-btn');
 
-                        if (status.video_created && status.video_url) {
-                            videoStatusEl.textContent = '✅ Video created';
-                            videoStatusEl.style.color = '#90EE90';
+                    if (status.video_created && status.video_url) {
+                        videoStatusEl.textContent = '✅ Video created';
+                        videoStatusEl.style.color = '#90EE90';
 
-                            // Show video player with the video
-                            videoContentDiv.style.display = 'block';
-                            videoPlayer.src = status.video_url;
+                        // Show video player with the video
+                        videoContentDiv.style.display = 'block';
+                        videoPlayer.src = status.video_url;
 
-                            // Show and configure download button
-                            downloadBtn.href = status.video_url;
-                            downloadBtn.style.display = 'inline-block';
+                        // Show and configure download button
+                        downloadBtn.style.display = 'inline-block';
 
-                            // Stop polling once video is created
-                            clearInterval(interval);
+                        // Add click handler to download the video
+                        downloadBtn.onclick = async () => {
+                            try {
+                                downloadBtn.textContent = 'Downloading...';
+                                const response = await fetch(status.video_url);
+                                const blob = await response.blob();
+                                const url = window.URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = 'demo-video.webm';
+                                document.body.appendChild(a);
+                                a.click();
+                                window.URL.revokeObjectURL(url);
+                                document.body.removeChild(a);
+                                downloadBtn.textContent = 'Download Video';
+                            } catch (error) {
+                                console.error('Download failed:', error);
+                                downloadBtn.textContent = 'Download Failed - Try Again';
+                                setTimeout(() => {
+                                    downloadBtn.textContent = 'Download Video';
+                                }, 3000);
+                            }
+                        };
+
+                        // Stop polling once video is created
+                        if (pollingInterval) {
+                            clearInterval(pollingInterval);
                         }
                     }
-                } catch (error) {
-                    console.error('Error checking status:', error);
                 }
-            }, 60000); // Check every 60 seconds (1 minute)
+            } catch (error) {
+                console.error('Error checking status:', error);
+            }
         }
 
-        // Start polling immediately
-        checkStatus();
+        function startPolling() {
+            // Check status immediately on page load
+            updateStatus();
+
+            // Then check every 60 seconds (1 minute)
+            pollingInterval = setInterval(updateStatus, 60000);
+        }
+
+        // Start polling when page loads
+        startPolling();
     </script>
 </body>
 </html>
