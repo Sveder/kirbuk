@@ -45,26 +45,16 @@ RUN apt-get update && apt-get install -y \
 # Install comprehensive international fonts for proper character rendering
 # This fixes Hebrew, Arabic, Japanese, Chinese, Korean and other language support
 RUN apt-get update && apt-get install -y \
-    fonts-noto-core \
+    fonts-noto \
     fonts-noto-cjk \
-    fonts-noto-cjk-extra \
     fonts-noto-color-emoji \
-    fonts-noto-extra \
-    fonts-noto-ui-core \
-    fonts-noto-ui-extra \
-    fonts-noto-unhinted \
     fonts-arphic-ukai \
     fonts-arphic-uming \
     fonts-ipafont-gothic \
     fonts-ipafont-mincho \
     fonts-unfonts-core \
-    fonts-dejavu-core \
-    fonts-dejavu-extra \
-    fonts-ubuntu \
-    && rm -rf /var/lib/apt/lists/*
-
-# Update font cache to ensure all fonts are available
-RUN fc-cache -fv
+    && rm -rf /var/lib/apt/lists/* \
+    && fc-cache -fv
 
 COPY requirements.txt requirements.txt
 # Install from requirements file
