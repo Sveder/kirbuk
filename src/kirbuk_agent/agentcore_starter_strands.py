@@ -881,6 +881,7 @@ def invoke(payload, context):
             except Exception as check_error:
                 # If we can't check, proceed anyway to avoid blocking legitimate requests
                 print(f"Warning: Could not check for duplicate: {check_error}")
+                sentry_sdk.capture_exception(check_error)
                 pass
 
             # Save payload to S3 (this marks the submission as being processed)
@@ -971,6 +972,7 @@ def invoke(payload, context):
                     print(f"✓ Playwright code also saved locally at: {debug_script_path}")
                 except Exception as file_save_exc:
                     print(f"✗ Warning: Failed to save playwright script to file: {file_save_exc}")
+                    sentry_sdk.capture_exception(file_save_exc)
 
             # Execute the Playwright script and create SILENT video
             print("\n" + "=" * 80)
@@ -996,6 +998,7 @@ def invoke(payload, context):
                 import traceback
                 print(f"Video creation traceback: {traceback.format_exc()}")
                 print("⚠️  Continuing with default 2-minute duration for audio generation")
+                sentry_sdk.capture_exception(video_error)
 
             # NOW generate voice script based on ACTUAL video duration
             print("\n" + "=" * 80)
@@ -1054,12 +1057,14 @@ def invoke(payload, context):
                         import traceback
                         print(f"Audio merge traceback: {traceback.format_exc()}")
                         print("⚠️  Video uploaded without audio")
+                        sentry_sdk.capture_exception(merge_error)
 
                 except Exception as polly_error:
                     print(f"✗ Error synthesizing voice with Polly: {polly_error}")
                     import traceback
                     print(f"Polly synthesis traceback: {traceback.format_exc()}")
                     print("⚠️  Video will be uploaded without audio")
+                    sentry_sdk.capture_exception(polly_error)
 
             except Exception as voice_error:
                 print(f"✗ Error generating voice script: {voice_error}")
@@ -1067,6 +1072,7 @@ def invoke(payload, context):
                 import traceback
                 print(f"Voice script generation traceback: {traceback.format_exc()}")
                 print("⚠️  Video will be uploaded without narration")
+                sentry_sdk.capture_exception(voice_error)
 
         print("\n" + "=" * 80)
         print("✅ WORKFLOW COMPLETED SUCCESSFULLY")
