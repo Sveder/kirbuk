@@ -38,6 +38,13 @@ IMPORTANT TIMING: Create a script that will take approximately 2 minutes to demo
 - Each action takes 3-5 seconds, so plan for about 24-40 actions total
 - Include pauses where needed to let information sink in
 
+CRITICAL - WHEN TO STOP EXPLORING:
+- Explore for a MAXIMUM of 10-15 browser actions (clicks, navigations, form fills)
+- After you understand the main features, STOP exploring and write your final script
+- Do NOT endlessly click around the site - focus on the key user journey
+- If you've seen the main features, FINISH your exploration and provide the script
+- You should spend no more than 5-10 minutes total on exploration
+
 More rules:
 1. If the site throws an error, note it but continue your exploration.
 2. If you find settings - look at them but do not try to change settings.
@@ -46,6 +53,7 @@ More rules:
 5. If you seem stuck go back to the starting page and start over, this time only following the main path.
 6. If there is a documentation page - look at main page only and don't read all the docs. Definitely don't search the logs.
 7. Don't stop with errors ever. Instead restart and try again once and if not just stop regularly with suitable message.
+8. After 10-15 actions, you MUST stop exploring and write your final demo script - do not continue clicking endlessly.
 """
 
 ci_sessions = {}
