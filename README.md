@@ -72,7 +72,3 @@ The application is configured to run with:
 - `DJANGO_SECRET_KEY` - Django secret key
 - `SENTRY_DSN` - Sentry monitoring DSN
 - `AWS_AGENTCORE_ENDPOINT` - AWS AgentCore API endpoint (future)
-
-## License
-
-MIT
