@@ -989,7 +989,6 @@ def invoke(payload, context):
                     s3_client.download_file(S3_BUCKET, video_s3_key, temp_video.name)
                     video_duration = get_video_duration(temp_video.name)
                     # Clean up temp file
-                    import os
                     os.unlink(temp_video.name)
 
             except Exception as video_error:
