@@ -814,8 +814,26 @@ def execute_playwright_script(playwright_code, submission_id):
             with open(script_path, 'w') as f:
                 f.write(playwright_code)
 
+            print(f"✓ Script written to {script_path}")
+            print(f"Script length: {len(playwright_code)} characters, {len(playwright_code.splitlines())} lines")
+
+            # Log first 50 lines of script for debugging
+            script_lines = playwright_code.splitlines()
+            print("\n" + "=" * 80)
+            print("PLAYWRIGHT SCRIPT (first 50 lines):")
+            print("=" * 80)
+            for i, line in enumerate(script_lines[:50], 1):
+                print(f"{i:3d}: {line}")
+            if len(script_lines) > 50:
+                print(f"... ({len(script_lines) - 50} more lines)")
+            print("=" * 80 + "\n")
+
             # Execute the script
             print("Running Playwright script...")
+            print(f"Command: python {script_path}")
+            print(f"Working directory: {temp_dir}")
+            print(f"Timeout: 300 seconds (5 minutes)")
+
             result = subprocess.run(
                 ['python', script_path],
                 cwd=temp_dir,
@@ -824,17 +842,72 @@ def execute_playwright_script(playwright_code, submission_id):
                 timeout=300  # 5 minute timeout
             )
 
-            print(f"Script execution stdout: {result.stdout}")
+            print(f"\n{'=' * 80}")
+            print(f"SCRIPT EXECUTION COMPLETED")
+            print(f"{'=' * 80}")
+            print(f"Return code: {result.returncode}")
+            print(f"Stdout length: {len(result.stdout)} characters")
+            print(f"Stderr length: {len(result.stderr)} characters")
+
+            if result.stdout:
+                print(f"\n{'=' * 80}")
+                print(f"STDOUT:")
+                print(f"{'=' * 80}")
+                print(result.stdout)
+                print(f"{'=' * 80}\n")
+            else:
+                print("⚠️  No stdout output")
+
             if result.stderr:
-                print(f"Script execution stderr: {result.stderr}")
+                print(f"\n{'=' * 80}")
+                print(f"STDERR:")
+                print(f"{'=' * 80}")
+                print(result.stderr)
+                print(f"{'=' * 80}\n")
+            else:
+                print("✓ No stderr output")
 
             if result.returncode != 0:
                 raise Exception(f"Playwright script failed with return code {result.returncode}: {result.stderr}")
 
+            # List all files in temp directory
+            print(f"\n{'=' * 80}")
+            print(f"FILES IN TEMP DIRECTORY:")
+            print(f"{'=' * 80}")
+            for root, dirs, files in os.walk(temp_dir):
+                level = root.replace(temp_dir, '').count(os.sep)
+                indent = ' ' * 2 * level
+                print(f"{indent}{os.path.basename(root)}/")
+                subindent = ' ' * 2 * (level + 1)
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    file_size = os.path.getsize(file_path)
+                    print(f"{subindent}{file} ({file_size:,} bytes)")
+            print(f"{'=' * 80}\n")
+
             # Check if video was created
             video_path = os.path.join(temp_dir, 'output.webm')
             if not os.path.exists(video_path):
-                raise Exception("Video file 'output.webm' was not created by the script")
+                # Check for alternative video file names
+                possible_names = ['output.webm', 'video.webm', 'recording.webm', 'demo.webm']
+                found_video = None
+                for name in possible_names:
+                    alt_path = os.path.join(temp_dir, name)
+                    if os.path.exists(alt_path):
+                        found_video = alt_path
+                        print(f"⚠️  Found video with alternative name: {name}")
+                        video_path = alt_path
+                        break
+
+                if not found_video:
+                    error_msg = "Video file 'output.webm' was not created by the script.\n"
+                    error_msg += f"Temp directory contents: {os.listdir(temp_dir)}\n"
+                    error_msg += f"Expected path: {video_path}\n"
+                    error_msg += "Script may have failed silently or saved video with different name."
+                    raise Exception(error_msg)
+            else:
+                video_size = os.path.getsize(video_path)
+                print(f"✓ Video file found: {video_path} ({video_size:,} bytes)")
 
             # Note: Audio merging now happens in STEP 7 after voice synthesis
             # This step only uploads the silent video
