@@ -59,7 +59,7 @@ flowchart TB
     Django -->|"Generate Presigned URLs<br/>(1-hour expiry)"| S3
 
     %% AgentCore Orchestration
-    AgentCore -->|"4. Check Duplicate| S3
+    AgentCore -->|"4. Check Duplicate"| S3
     AgentCore -->|"5. Save Payload"| S3
     AgentCore -->|"Step 1: Explore Website"| Browser
     Browser -->|"Returns Narrative"| AgentCore
