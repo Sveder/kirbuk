@@ -11,9 +11,9 @@ flowchart TB
         Email[📧 User Email]
     end
 
-    subgraph "AWS Account: 800622328366 - Region: eu-central-1"
+    subgraph "AWS Account"
         subgraph "Web Application Layer"
-            Django["🌐 Django Web App<br/>(Gunicorn on EC2)<br/>127.0.0.1:8000"]
+            Django["🌐 Django Web App<br/>(Gunicorn on EC2)"]
         end
 
         subgraph "Core Processing Layer"
@@ -23,7 +23,7 @@ flowchart TB
         end
 
         subgraph "Storage Layer"
-            S3["☁️ Amazon S3<br/>Bucket: sveder-kirbuk<br/>staging_area/{submission_id}/<br/>- {id}.json (payload)<br/>- script.txt<br/>- voice_script.ssml<br/>- voice.mp3<br/>- playwright.py<br/>- video.webm"]
+            S3["☁️ Amazon S3"]
         end
 
         subgraph "Media Services"
@@ -32,7 +32,7 @@ flowchart TB
         end
 
         subgraph "Notification Services"
-            SES["📬 Amazon SES<br/>Sender: m@sveder.com<br/>HTML Email Notifications"]
+            SES["📬 Amazon SES"]
         end
 
         subgraph "Infrastructure Services"
@@ -43,7 +43,7 @@ flowchart TB
         end
 
         subgraph "External Services"
-            Sentry["🚨 Sentry<br/>(Error Tracking)<br/>o630775.ingest.us.sentry.io"]
+            Sentry["🚨 Sentry"]
         end
     end
 
@@ -59,25 +59,25 @@ flowchart TB
     Django -->|"Generate Presigned URLs<br/>(1-hour expiry)"| S3
 
     %% AgentCore Orchestration
-    AgentCore -->|"4. Check Duplicate<br/>(head_object)"| S3
-    AgentCore -->|"5. Save Payload<br/>(put_object)"| S3
+    AgentCore -->|"4. Check Duplicate| S3
+    AgentCore -->|"5. Save Payload"| S3
     AgentCore -->|"Step 1: Explore Website"| Browser
     Browser -->|"Returns Narrative"| AgentCore
     AgentCore -->|"Step 2: Save script.txt"| S3
-    AgentCore -->|"Step 3: Generate SSML<br/>(AI-powered)"| Claude
+    AgentCore -->|"Step 3: Generate SSML"| Claude
     Claude -->|"voice_script.ssml"| S3
     AgentCore -->|"Step 4: start_speech_synthesis_task()"| Polly
 
     %% Polly Processing
-    Polly -->|"Direct Output<br/>voice.mp3"| S3
-    AgentCore -->|"Poll Status<br/>(max 5 min, 1-min interval)"| Polly
+    Polly -->|"Direct Output"| S3
+    AgentCore -->|"Poll Status"| Polly
 
     %% Playwright Processing
-    AgentCore -->|"Step 5: Generate<br/>playwright.py (AI)"| Claude
+    AgentCore -->|"Step 5: Generate"| Claude
     Claude -->|"Save Script"| S3
     AgentCore -->|"Step 6: Execute Automation"| Playwright
-    Playwright -->|"Download voice.mp3"| S3
-    Playwright -->|"Merge Audio + Video<br/>Upload video.webm"| S3
+    Playwright -->|"Download Polly narration"| S3
+    Playwright -->|"Merge Audio + Video"| S3
 
     %% Notifications
     AgentCore -->|"send_email()<br/>(start/success/failure)"| SES
@@ -125,7 +125,7 @@ flowchart TB
 - Receive email notifications for video generation status
 
 **Web Application Layer:**
-- Django 5.2.7 web app running on Gunicorn (3 workers)
+- Django web app running on Gunicorn
 - Hosted on EC2 at https://kirbuk.sveder.com
 - Handles form submissions and status queries
 
@@ -135,9 +135,8 @@ flowchart TB
 - AgentCore Browser Tool for website exploration
 
 **Storage Layer:**
-- Amazon S3 bucket: `sveder-kirbuk`
+- Amazon S3 bucket
 - Central hub for all artifacts and state management
-- Structure: `staging_area/{submission_id}/[artifacts]`
 
 **Media Services:**
 - Amazon Polly for text-to-speech (Generative engine, Matthew voice)
@@ -159,51 +158,21 @@ flowchart TB
 
 1. **User Submission**: User submits form with email, product URL, and directions
 2. **Immediate Response**: Django returns submission_id (UUID) immediately
-3. **Background Processing**: Django invokes AgentCore in non-daemon background thread
+3. **Background Processing**: Django invokes AgentCore
 4. **6-Step Pipeline**:
-   - Step 1: Browser explores the product website
+   - Step 1: Bedrock Browser tool explores the product website
    - Step 2: Save narrative script to S3
-   - Step 3: Generate SSML voice script (AI)
+   - Step 3: Generate SSML voice script
    - Step 4: Synthesize voice with Polly → MP3 to S3
-   - Step 5: Generate Playwright automation script (AI)
+   - Step 5: Generate Playwright automation script
    - Step 6: Execute Playwright, record video, merge audio → WebM to S3
 5. **Email Notifications**: SES sends start and completion emails
 6. **Status Polling**: User queries Django, which checks S3 for artifacts
 7. **Presigned URLs**: Django generates 1-hour temporary URLs for audio/video access
 
-### AWS Region
-
-All services deployed in: **eu-central-1** (Frankfurt)
-
-### AWS Account ID
-
-**800622328366**
-
-## Key Architectural Patterns
-
-1. **Asynchronous Processing**: Web app returns immediately, processing happens in background
-2. **S3 as State Machine**: Each file represents completion of a processing stage
-3. **Serverless Composition**: Bedrock AgentCore orchestrates AWS-managed services
-4. **AI-Driven Workflow**: Claude Sonnet 4 generates multi-step content
-5. **Email as Notification Channel**: SES provides reliable delivery with HTML templates
-
-## Storage Structure
-
-```
-S3 Bucket: sveder-kirbuk
-└── staging_area/
-    └── {submission_id} (UUID)
-        ├── {submission_id}.json    # Input payload
-        ├── script.txt              # Narrative from agent
-        ├── voice_script.ssml       # SSML markup
-        ├── voice.mp3               # Generated audio
-        ├── playwright.py           # Automation script
-        └── video.webm              # Final output
-```
-
 ## Security
 
-- IAM roles control access to S3, Polly, SES, and Bedrock
+- Bedrock Runtime IAM roles control access to S3, Polly, SES, and Bedrock
 - Presigned URLs provide temporary, secure access to S3 objects
 - Test credentials masked in logs
-- Sentry PII collection enabled for debugging
+
