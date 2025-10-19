@@ -299,6 +299,7 @@
                         // Show video player with the video
                         videoContentDiv.style.display = 'block';
                         videoPlayer.src = status.video_url;
+                        videoPlayer.load(); // Explicitly load the video
 
                         // Show and configure download button
                         downloadBtn.style.display = 'inline-block';
