@@ -79,8 +79,7 @@ EXPOSE 8080
 # Copy entire project (respecting .dockerignore)
 COPY . .
 
-# Copy background music from repo root (two levels up from kirbuk_agent/)
-COPY ../../audio/bg_music /app/audio/bg_music
+# Background music copied as part of COPY . . above (audio/bg_music/)
 
 # Create startup script to run Xvfb and the application
 USER root
