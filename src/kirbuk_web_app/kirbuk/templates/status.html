@@ -301,31 +301,17 @@
                         videoPlayer.src = status.video_url;
                         videoPlayer.load(); // Explicitly load the video
 
-                        // Show and configure download button
+                        // Show and configure download button as a direct link
                         downloadBtn.style.display = 'inline-block';
-
-                        // Add click handler to download the video
-                        downloadBtn.onclick = async () => {
-                            try {
-                                downloadBtn.textContent = 'Downloading...';
-                                const response = await fetch(status.video_url);
-                                const blob = await response.blob();
-                                const url = window.URL.createObjectURL(blob);
-                                const a = document.createElement('a');
-                                a.href = url;
-                                a.download = 'demo-video.webm';
-                                document.body.appendChild(a);
-                                a.click();
-                                window.URL.revokeObjectURL(url);
-                                document.body.removeChild(a);
-                                downloadBtn.textContent = 'Download Video';
-                            } catch (error) {
-                                console.error('Download failed:', error);
-                                downloadBtn.textContent = 'Download Failed - Try Again';
-                                setTimeout(() => {
-                                    downloadBtn.textContent = 'Download Video';
-                                }, 3000);
-                            }
+                        downloadBtn.onclick = () => {
+                            // Use direct link download - no CORS needed with presigned URL
+                            const a = document.createElement('a');
+                            a.href = status.video_url;
+                            a.download = 'demo-video.webm';
+                            a.target = '_blank';
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
                         };
 
                         // Stop polling once video is created
