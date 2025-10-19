@@ -85,7 +85,6 @@ def submit_form(request):
         print(f"Directions: {data.get('directions')}")
         print(f"Test Username: {data.get('test_username')}")
         print(f"Test Password: {'***' if data.get('test_password') else 'Not provided'}")
-        print(f"Roast Mode: {data.get('roast_mode')}")
         print("=" * 80)
 
         # Check if this submission is already being processed

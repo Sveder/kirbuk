@@ -227,19 +227,6 @@
                     <p class="helper-text">Provide test credentials if your product requires login</p>
                 </div>
 
-                <div class="form-group">
-                    <div class="checkbox-group">
-                        <input
-                            type="checkbox"
-                            id="roast_mode"
-                            name="roast_mode"
-                        >
-                        <label for="roast_mode" class="checkbox-label">
-                            Roast Mode - Make it spicy
-                        </label>
-                    </div>
-                </div>
-
                 <button type="submit" class="submit-btn">
                     Generate My Video
                 </button>
@@ -250,7 +237,7 @@
     <script>
         // Auto-save form data to localStorage
         const form = document.querySelector('form');
-        const fields = ['email', 'product_url', 'directions', 'test_username', 'test_password', 'roast_mode'];
+        const fields = ['email', 'product_url', 'directions', 'test_username', 'test_password'];
 
         // Load saved values on page load
         window.addEventListener('DOMContentLoaded', () => {
@@ -294,7 +281,6 @@
             e.preventDefault();
 
             const formData = new FormData(form);
-            const isRoastMode = formData.get('roast_mode') === 'on';
 
             // Prepare data to send to backend
             const data = {
@@ -302,8 +288,7 @@
                 product_url: formData.get('product_url'),
                 directions: formData.get('directions'),
                 test_username: formData.get('test_username'),
-                test_password: formData.get('test_password'),
-                roast_mode: isRoastMode
+                test_password: formData.get('test_password')
             };
 
             try {
