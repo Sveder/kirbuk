@@ -567,6 +567,9 @@ Requirements:
 8. Handle common issues like popups, cookies, etc.
 9. The script MUST save video as 'output.webm' in current directory
 10. Pace the actions to create a ~2 minute video that matches the voice narration timing
+11. Set browser locale to English and include Accept-Language header to ensure website displays in English:
+    - Use locale='en-US' in browser.new_context()
+    - Set extra_http_headers={'Accept-Language': 'en-US,en;q=0.9'} in browser.new_context()
 """
         )
 
