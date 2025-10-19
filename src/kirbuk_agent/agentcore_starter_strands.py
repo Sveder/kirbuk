@@ -233,6 +233,51 @@ def merge_audio_video_with_ffmpeg(video_path, audio_path, output_path):
         raise
 
 
+def get_video_duration(video_path):
+    """Get the duration of a video file in seconds using ffprobe
+
+    Args:
+        video_path: Path to the video file
+
+    Returns:
+        Duration in seconds (float)
+    """
+    import subprocess
+    import json
+
+    try:
+        # Use ffprobe to get video duration
+        cmd = [
+            'ffprobe',
+            '-v', 'quiet',
+            '-print_format', 'json',
+            '-show_format',
+            video_path
+        ]
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+
+        if result.returncode != 0:
+            raise Exception(f"ffprobe failed: {result.stderr}")
+
+        data = json.loads(result.stdout)
+        duration = float(data['format']['duration'])
+
+        print(f"✓ Video duration: {duration:.2f} seconds ({duration/60:.2f} minutes)")
+        return duration
+
+    except Exception as e:
+        print(f"Error getting video duration: {e}")
+        # Return default 2 minutes if we can't measure
+        print("⚠️  Defaulting to 120 seconds (2 minutes)")
+        return 120.0
+
+
 def save_voice_script_to_s3(voice_script, submission_id):
     """Save the SSML voice script to S3 in the staging area"""
     try:
@@ -482,18 +527,34 @@ def synthesize_voice_with_polly(voice_script, submission_id):
         raise
 
 
-def generate_voice_script(script_text, product_url):
-    """Generate an SSML voice script from the narrative script"""
+def generate_voice_script(script_text, product_url, video_duration_seconds=120):
+    """Generate an SSML voice script from the narrative script
+
+    Args:
+        script_text: The narrative script from browser exploration
+        product_url: URL of the product being demoed
+        video_duration_seconds: Exact duration of the video in seconds (default 120)
+
+    Returns:
+        SSML voice script string
+    """
     try:
+        # Calculate word count based on duration (130-150 words per minute)
+        minutes = video_duration_seconds / 60
+        target_words_min = int(130 * minutes)
+        target_words_max = int(150 * minutes)
+
         # Create a simple agent without tools to generate the SSML voice script
         agent = Agent(
             model=MODEL_ID,
-            system_prompt="""You are an expert at creating SSML (Speech Synthesis Markup Language) voice scripts for demo videos using AWS Polly Generative engine.
+            system_prompt=f"""You are an expert at creating SSML (Speech Synthesis Markup Language) voice scripts for demo videos using AWS Polly Generative engine.
 
-IMPORTANT TIMING: Create a narration that will take approximately 2 minutes to speak.
-- Aim for 250-300 words total (typical speaking rate is 130-150 words per minute)
+CRITICAL TIMING REQUIREMENT: The video is EXACTLY {video_duration_seconds:.1f} seconds ({minutes:.2f} minutes) long.
+Your narration MUST match this exact duration:
+- Aim for {target_words_min}-{target_words_max} words total (typical speaking rate is 130-150 words per minute)
 - Include strategic pauses to allow viewers to absorb what they're seeing
-- The narration should match the pacing of the on-screen actions
+- The narration should fill the entire video duration without going over
+- Use <break> tags to add pauses and stretch the narration to match the video length
 
 IMPORTANT - Only use these SSML tags (fully supported by Polly Generative):
 - <speak> - Root element (required)
@@ -851,39 +912,9 @@ def invoke(payload, context):
             script_s3_key = save_script_to_s3(response, submission_id)
             print(f"✓ Script saved to S3: {script_s3_key}")
 
-            # Generate and save voice script
+            # Generate and save Playwright script FIRST (before audio)
             print("\n" + "=" * 80)
-            print("STEP 3: Generating SSML voice script")
-            print("=" * 80)
-            voice_script = None
-            try:
-                voice_script = generate_voice_script(response, payload['product_url'])
-                print(f"✓ Voice script generated ({len(voice_script)} characters)")
-
-                voice_script_s3_key = save_voice_script_to_s3(voice_script, submission_id)
-                print(f"✓ Voice script saved to S3: {voice_script_s3_key}")
-
-                # Synthesize voice using AWS Polly
-                print("\n" + "=" * 80)
-                print("STEP 4: Synthesizing voice with AWS Polly")
-                print("=" * 80)
-                try:
-                    voice_audio_s3_key = synthesize_voice_with_polly(voice_script, submission_id)
-                    print(f"✓ Voice audio synthesized and saved to S3: {voice_audio_s3_key}")
-                except Exception as polly_error:
-                    print(f"✗ Error synthesizing voice with Polly: {polly_error}")
-                    import traceback
-                    print(f"Polly synthesis traceback: {traceback.format_exc()}")
-
-            except Exception as voice_error:
-                print(f"✗ Error generating voice script: {voice_error}")
-                # Don't fail the entire job if voice script generation fails
-                import traceback
-                print(f"Voice script generation traceback: {traceback.format_exc()}")
-
-            # Generate and save Playwright script
-            print("\n" + "=" * 80)
-            print("STEP 5: Generating Playwright script")
+            print("STEP 3: Generating Playwright script")
             print("=" * 80)
             playwright_code = generate_playwright_script(
                 response,
@@ -905,18 +936,61 @@ def invoke(payload, context):
                 except Exception as file_save_exc:
                     print(f"✗ Warning: Failed to save playwright script to file: {file_save_exc}")
 
-            # Execute the Playwright script and upload video
+            # Execute the Playwright script and create SILENT video
             print("\n" + "=" * 80)
-            print("STEP 6: Executing Playwright script to create video")
+            print("STEP 4: Executing Playwright script to create video")
             print("=" * 80)
+            video_duration = 120.0  # Default duration
             try:
                 video_s3_key = execute_playwright_script(playwright_code, submission_id)
                 print(f"✓ Video successfully created and uploaded to S3: {video_s3_key}")
+
+                # Download video temporarily to measure duration
+                print("→ Measuring video duration...")
+                import tempfile
+                s3_client = boto3.client('s3', region_name=REGION)
+                with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as temp_video:
+                    s3_client.download_file(S3_BUCKET, video_s3_key, temp_video.name)
+                    video_duration = get_video_duration(temp_video.name)
+                    # Clean up temp file
+                    import os
+                    os.unlink(temp_video.name)
+
             except Exception as video_error:
                 print(f"✗ Error creating video: {video_error}")
-                # Don't fail the entire job if video creation fails
                 import traceback
                 print(f"Video creation traceback: {traceback.format_exc()}")
+                print("⚠️  Continuing with default 2-minute duration for audio generation")
+
+            # NOW generate voice script based on ACTUAL video duration
+            print("\n" + "=" * 80)
+            print(f"STEP 5: Generating SSML voice script (for {video_duration:.1f}s video)")
+            print("=" * 80)
+            voice_script = None
+            try:
+                voice_script = generate_voice_script(response, payload['product_url'], video_duration)
+                print(f"✓ Voice script generated ({len(voice_script)} characters)")
+
+                voice_script_s3_key = save_voice_script_to_s3(voice_script, submission_id)
+                print(f"✓ Voice script saved to S3: {voice_script_s3_key}")
+
+                # Synthesize voice using AWS Polly
+                print("\n" + "=" * 80)
+                print("STEP 6: Synthesizing voice with AWS Polly")
+                print("=" * 80)
+                try:
+                    voice_audio_s3_key = synthesize_voice_with_polly(voice_script, submission_id)
+                    print(f"✓ Voice audio synthesized and saved to S3: {voice_audio_s3_key}")
+                except Exception as polly_error:
+                    print(f"✗ Error synthesizing voice with Polly: {polly_error}")
+                    import traceback
+                    print(f"Polly synthesis traceback: {traceback.format_exc()}")
+
+            except Exception as voice_error:
+                print(f"✗ Error generating voice script: {voice_error}")
+                # Don't fail the entire job if voice script generation fails
+                import traceback
+                print(f"Voice script generation traceback: {traceback.format_exc()}")
 
         print("\n" + "=" * 80)
         print("✅ WORKFLOW COMPLETED SUCCESSFULLY")
