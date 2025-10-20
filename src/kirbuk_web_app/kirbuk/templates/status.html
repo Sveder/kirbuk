@@ -165,7 +165,7 @@
 
             <div id="status-updates">
                 <h3>Status</h3>
-                <p id="json-status">📝 Waiting for payload...</p>
+                <p id="json-status">📝 Waiting for agent task...</p>
                 <p id="script-status">📜 Waiting for script...</p>
                 <p id="voice-script-status">🎙️ Waiting for voice script...</p>
                 <p id="voice-audio-status">🔊 Waiting for voice audio...</p>
@@ -229,7 +229,7 @@
                     // Update JSON status
                     const jsonStatusEl = document.getElementById('json-status');
                     if (status.json_created) {
-                        jsonStatusEl.textContent = '✅ Payload received and saved';
+                        jsonStatusEl.textContent = '✅ Agent task received';
                         jsonStatusEl.style.color = '#90EE90';
                     }
 

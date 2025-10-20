@@ -179,10 +179,15 @@ def check_status(request, submission_id):
             response = s3_client.get_object(Bucket=S3_BUCKET, Key=voice_script_key)
             status['voice_script_created'] = True
             status['voice_script_content'] = response['Body'].read().decode('utf-8')
-        except s3_client.exceptions.NoSuchKey:
-            pass
+            print(f"✓ Voice script found: {voice_script_key}")
         except Exception as e:
-            print(f"Error checking voice script file: {e}")
+            error_code = e.response.get('Error', {}).get('Code', '') if hasattr(e, 'response') else ''
+            if error_code == 'NoSuchKey' or '404' in str(e):
+                print(f"Voice script not found yet: {voice_script_key}")
+            else:
+                print(f"Error checking voice script file: {e}")
+                import traceback
+                print(traceback.format_exc())
 
         # Check if voice audio file exists and generate presigned URL
         try:
@@ -194,10 +199,15 @@ def check_status(request, submission_id):
                 Params={'Bucket': S3_BUCKET, 'Key': voice_audio_key},
                 ExpiresIn=3600
             )
-        except s3_client.exceptions.NoSuchKey:
-            pass
+            print(f"✓ Voice audio found: {voice_audio_key}")
         except Exception as e:
-            print(f"Error checking voice audio file: {e}")
+            error_code = e.response.get('Error', {}).get('Code', '') if hasattr(e, 'response') else ''
+            if error_code == 'NoSuchKey' or error_code == '404' or '404' in str(e):
+                print(f"Voice audio not found yet: {voice_audio_key}")
+            else:
+                print(f"Error checking voice audio file: {e}")
+                import traceback
+                print(traceback.format_exc())
 
         # Check if Playwright file exists and get its content
         try:

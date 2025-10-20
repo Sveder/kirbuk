@@ -336,6 +336,70 @@ def merge_audio_video_with_ffmpeg(video_path, audio_path, output_path):
         raise
 
 
+def extract_video_frames(video_path, output_dir, interval_seconds=5):
+    """Extract frames from video at specified intervals using ffmpeg
+
+    Args:
+        video_path: Path to the video file
+        output_dir: Directory to save extracted frames
+        interval_seconds: Extract one frame every N seconds (default 5)
+
+    Returns:
+        List of paths to extracted frame images
+    """
+    import subprocess
+    import os
+
+    try:
+        print(f"Extracting frames from video every {interval_seconds} seconds...")
+        print(f"Video: {video_path}")
+        print(f"Output directory: {output_dir}")
+
+        # Create output directory if it doesn't exist
+        os.makedirs(output_dir, exist_ok=True)
+
+        # FFmpeg command to extract frames at intervals
+        # -i: input video
+        # -vf fps=1/5: extract 1 frame every 5 seconds
+        # frame_%05d.png: output pattern (frame_00001.png, frame_00002.png, etc.)
+        cmd = [
+            'ffmpeg',
+            '-i', video_path,
+            '-vf', f'fps=1/{interval_seconds}',  # 1 frame per interval
+            '-vsync', 'vfr',  # Variable frame rate
+            '-y',  # Overwrite if exists
+            os.path.join(output_dir, 'frame_%05d.png')
+        ]
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=120  # 2 minute timeout
+        )
+
+        if result.returncode != 0:
+            print(f"FFmpeg stderr: {result.stderr}")
+            raise Exception(f"FFmpeg frame extraction failed: {result.stderr}")
+
+        # Get list of extracted frames
+        frame_files = sorted([
+            os.path.join(output_dir, f)
+            for f in os.listdir(output_dir)
+            if f.startswith('frame_') and f.endswith('.png')
+        ])
+
+        print(f"✓ Extracted {len(frame_files)} frames from video")
+        return frame_files
+
+    except subprocess.TimeoutExpired:
+        print("FFmpeg frame extraction timed out after 2 minutes")
+        raise Exception("Frame extraction timed out")
+    except Exception as e:
+        print(f"Error extracting frames from video: {e}")
+        raise
+
+
 def get_video_duration(video_path):
     """Get the duration of a video file in seconds using ffprobe
 
@@ -630,14 +694,15 @@ def synthesize_voice_with_polly(voice_script, submission_id):
         raise
 
 
-def generate_voice_script(script_text, product_url, video_duration_seconds=120, roast_mode=False):
-    """Generate an SSML voice script from the narrative script
+def generate_voice_script(script_text, product_url, video_duration_seconds=120, roast_mode=False, frame_s3_keys=None):
+    """Generate an SSML voice script from the narrative script with visual context from video frames
 
     Args:
         script_text: The narrative script from browser exploration
         product_url: URL of the product being demoed
         video_duration_seconds: Exact duration of the video in seconds (default 120)
         roast_mode: If True, use humorous/sarcastic tone; if False, use professional tone
+        frame_s3_keys: Optional list of S3 keys for video frames extracted every 5 seconds
 
     Returns:
         SSML voice script string
@@ -720,15 +785,82 @@ Requirements:
 The voice-over should guide the viewer through the demo, explaining features and benefits naturally."""
         )
 
-        prompt = f"""Create an SSML voice-over script for a demo video of this website: {product_url}
+        # Download frames from S3 if available to provide visual context
+        frame_images = []
+        if frame_s3_keys:
+            print(f"Downloading {len(frame_s3_keys)} video frames for visual context...")
+            import tempfile
+            s3_client = boto3.client('s3', region_name=REGION)
+
+            temp_frames_dir = tempfile.mkdtemp()
+            try:
+                for frame_s3_key in frame_s3_keys:
+                    frame_filename = os.path.basename(frame_s3_key)
+                    local_frame_path = os.path.join(temp_frames_dir, frame_filename)
+
+                    # Download frame from S3
+                    s3_client.download_file(S3_BUCKET, frame_s3_key, local_frame_path)
+
+                    # Read image data and encode as base64 for multimodal model
+                    with open(local_frame_path, 'rb') as f:
+                        import base64
+                        image_data = base64.standard_b64encode(f.read()).decode('utf-8')
+                        frame_images.append({
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/png",
+                                "data": image_data
+                            }
+                        })
+
+                print(f"✓ Downloaded and prepared {len(frame_images)} frames for visual context")
+            except Exception as download_error:
+                print(f"⚠️  Error downloading frames: {download_error}")
+                print("Continuing without visual context...")
+                frame_images = []
+            finally:
+                # Clean up temp directory
+                import shutil
+                try:
+                    shutil.rmtree(temp_frames_dir)
+                except:
+                    pass
+
+        # Build prompt content - mix text and images if frames available
+        prompt_content = []
+
+        # Add text instruction
+        prompt_text = f"""Create an SSML voice-over script for a demo video of this website: {product_url}
 
 The demo follows this narrative:
-{script_text}
+{script_text}"""
+
+        if frame_images:
+            prompt_text += f"""
+
+IMPORTANT: I'm providing {len(frame_images)} screenshots from the actual video, taken every 5 seconds.
+Use these screenshots to see what's actually happening in the video at each moment.
+Synchronize your narration with what's visible in these frames - describe what viewers are seeing at each point in time.
+The frames are in chronological order, starting from the beginning of the video.
+"""
+
+        prompt_text += """
 
 Create an engaging voice-over that explains what's happening in the demo and highlights the key features and benefits.
 Return only the SSML code, nothing else."""
 
-        result = agent(prompt)
+        prompt_content.append({"type": "text", "text": prompt_text})
+
+        # Add frame images
+        if frame_images:
+            for i, frame_image in enumerate(frame_images):
+                seconds = (i + 1) * 5
+                prompt_content.append({"type": "text", "text": f"\n--- Frame at {seconds} seconds ---"})
+                prompt_content.append(frame_image)
+
+        # Call agent with text and images
+        result = agent(prompt_content if frame_images else prompt_text)
         voice_script = result.message.get('content', [{}])[0].get('text', str(result))
 
         # Clean up the code if it has markdown code blocks
@@ -870,7 +1002,11 @@ Additional user directions to incorporate:
 
 
 def execute_playwright_script(playwright_code, submission_id):
-    """Execute the Playwright script, merge audio with video, and upload the resulting video to S3"""
+    """Execute the Playwright script, extract frames, and upload video and frames to S3
+
+    Returns:
+        tuple: (video_s3_key, frame_s3_keys) where frame_s3_keys is a list of S3 keys for extracted frames
+    """
     import tempfile
     import subprocess
 
@@ -985,14 +1121,53 @@ def execute_playwright_script(playwright_code, submission_id):
             print("Note: Audio will be added later in STEP 7")
             print("-" * 80)
 
+            # Extract frames from video every 5 seconds
+            print("\n" + "-" * 80)
+            print("STEP 4.1: Extracting frames from video")
+            print("-" * 80)
+            frames_dir = os.path.join(temp_dir, 'frames')
+            frame_paths = []
+            try:
+                frame_paths = extract_video_frames(video_path, frames_dir, interval_seconds=5)
+                print(f"✓ Extracted {len(frame_paths)} frames")
+            except Exception as frame_error:
+                print(f"⚠️  Failed to extract frames: {frame_error}")
+                print("Continuing without frame extraction...")
+                # Don't fail the entire job if frame extraction fails
+
             # Upload video to S3 (without audio for now)
             print("\n" + "-" * 80)
-            print("STEP 6.2: Uploading final video to S3")
+            print("STEP 4.2: Uploading video to S3")
             print("-" * 80)
             s3_key = save_video_to_s3(video_path, submission_id)
             print(f"✓ Video uploaded to S3: {s3_key}")
 
-            return s3_key
+            # Upload frames to S3
+            print("\n" + "-" * 80)
+            print("STEP 4.3: Uploading frames to S3")
+            print("-" * 80)
+            frame_s3_keys = []
+            if frame_paths:
+                s3_client = boto3.client('s3', region_name=REGION)
+                for i, frame_path in enumerate(frame_paths, 1):
+                    frame_filename = os.path.basename(frame_path)
+                    frame_s3_key = f"{S3_STAGING_PREFIX}/{submission_id}/frames/{frame_filename}"
+
+                    # Upload frame to S3
+                    with open(frame_path, 'rb') as f:
+                        s3_client.put_object(
+                            Bucket=S3_BUCKET,
+                            Key=frame_s3_key,
+                            Body=f.read(),
+                            ContentType='image/png'
+                        )
+                    frame_s3_keys.append(frame_s3_key)
+
+                print(f"✓ Uploaded {len(frame_s3_keys)} frames to S3")
+            else:
+                print("⚠️  No frames to upload")
+
+            return s3_key, frame_s3_keys
 
     except subprocess.TimeoutExpired:
         print("Playwright script execution timed out after 5 minutes")
@@ -1149,12 +1324,14 @@ def invoke(payload, context):
 
             # Execute the Playwright script and create SILENT video
             print("\n" + "=" * 80)
-            print("STEP 4: Executing Playwright script to create video")
+            print("STEP 4: Executing Playwright script to create video and extract frames")
             print("=" * 80)
             video_duration = 120.0  # Default duration
+            frame_s3_keys = []  # Will hold S3 keys for extracted video frames
             try:
-                video_s3_key = execute_playwright_script(playwright_code, submission_id)
+                video_s3_key, frame_s3_keys = execute_playwright_script(playwright_code, submission_id)
                 print(f"✓ Video successfully created and uploaded to S3: {video_s3_key}")
+                print(f"✓ Extracted and uploaded {len(frame_s3_keys)} frames from video")
 
                 # Download video temporarily to measure duration
                 print("→ Measuring video duration...")
@@ -1173,13 +1350,19 @@ def invoke(payload, context):
                 print("⚠️  Continuing with default 2-minute duration for audio generation")
                 sentry_sdk.capture_exception(video_error)
 
-            # NOW generate voice script based on ACTUAL video duration
+            # NOW generate voice script based on ACTUAL video duration AND video frames
             print("\n" + "=" * 80)
-            print(f"STEP 5: Generating SSML voice script (for {video_duration:.1f}s video)")
+            print(f"STEP 5: Generating SSML voice script (for {video_duration:.1f}s video with {len(frame_s3_keys)} frame screenshots)")
             print("=" * 80)
             voice_script = None
             try:
-                voice_script = generate_voice_script(response, payload['product_url'], video_duration, roast_mode)
+                voice_script = generate_voice_script(
+                    response,
+                    payload['product_url'],
+                    video_duration,
+                    roast_mode,
+                    frame_s3_keys  # Pass frames for visual context
+                )
                 print(f"✓ Voice script generated ({len(voice_script)} characters)")
 
                 voice_script_s3_key = save_voice_script_to_s3(voice_script, submission_id)
