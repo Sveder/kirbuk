@@ -1,7 +1,0 @@
-strands-agents
-bedrock-agentcore
-strands-agents-tools
-playwright
-nest-asyncio
-boto3
-sentry-sdk
