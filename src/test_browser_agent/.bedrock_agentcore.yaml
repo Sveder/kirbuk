@@ -12,7 +12,7 @@ agents:
       account: '800622328366'
       region: eu-central-1
       ecr_repository: 800622328366.dkr.ecr.eu-central-1.amazonaws.com/bedrock-agentcore-test_agent
-      ecr_auto_create: false
+      ecr_auto_create: true
       network_configuration:
         network_mode: PUBLIC
         network_mode_config: null
@@ -20,5 +20,22 @@ agents:
         server_protocol: HTTP
       observability:
         enabled: true
+    bedrock_agentcore:
+      agent_id: test_agent-MtXkCs4SLv
+      agent_arn: arn:aws:bedrock-agentcore:eu-central-1:800622328366:runtime/test_agent-MtXkCs4SLv
+      agent_session_id: null
+    codebuild:
+      project_name: bedrock-agentcore-test_agent-builder
+      execution_role: arn:aws:iam::800622328366:role/AmazonBedrockAgentCoreSDKCodeBuild-eu-central-1-8bd92bdc12
+      source_bucket: bedrock-agentcore-codebuild-sources-800622328366-eu-central-1
     memory:
       mode: STM_ONLY
+      memory_id: test_agent_mem-y1dx9i9J5o
+      memory_arn: arn:aws:bedrock-agentcore:eu-central-1:800622328366:memory/test_agent_mem-y1dx9i9J5o
+      memory_name: test_agent_mem
+      event_expiry_days: 30
+      first_invoke_memory_check_done: false
+      was_created_by_toolkit: true
+    authorizer_configuration: null
+    request_header_configuration: null
+    oauth_configuration: null
