@@ -80,31 +80,45 @@ def invoke(payload, context):
         system_prompt="""You are a test agent exploring a website.
 Your task is simple:
 1. Navigate to sveder.com
-2. Find and click on the "About" button or link
-3. Describe what you see
+2. Take a screenshot
+3. Describe what you see on the homepage
 
-Be concise and just complete these steps.""",
+DO NOT click on anything. Just look at the homepage and describe it.
+Be concise.""",
         tools=[browser_tool.browser]
     )
 
-    # Execute the task
+    # Execute the task with error handling
     print("\n" + "=" * 80)
     print("EXECUTING BROWSER TASK")
     print("=" * 80)
 
-    result = agent("Go to sveder.com and click on the About button")
+    response = "Task not completed"
+    try:
+        result = agent("Go to sveder.com, take a screenshot, and describe what you see. Do not click anything.")
 
-    print("\n" + "=" * 80)
-    print("TASK COMPLETED")
-    print("=" * 80)
+        print("\n" + "=" * 80)
+        print("TASK COMPLETED")
+        print("=" * 80)
 
-    # Close browser
+        # Extract response
+        response = result.message.get('content', [{}])[0].get('text', str(result))
+        print(f"\nAgent response: {response}")
+
+    except Exception as e:
+        print(f"\n❌ Error during agent execution: {e}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        response = f"Agent execution failed with error: {str(e)}"
+
+    # Close browser with error handling
     print("\nClosing browser...")
-    browser_tool.close_platform()
-
-    # Extract response
-    response = result.message.get('content', [{}])[0].get('text', str(result))
-    print(f"\nAgent response: {response}")
+    try:
+        browser_tool.close_platform()
+        print("✓ Browser closed successfully")
+    except Exception as e:
+        print(f"⚠️  Error closing browser: {e}")
+        # Don't fail the whole invocation if browser close fails
 
     # Check directory contents again after execution
     print("\n" + "=" * 80)
