@@ -186,6 +186,36 @@ Be concise.""",
         else:
             print(f"\n{dir_path}: Does not exist")
 
+    # Explore ms-playwright directory in detail
+    print("\n" + "=" * 80)
+    print("MS-PLAYWRIGHT DIRECTORY DETAILS")
+    print("=" * 80)
+
+    playwright_cache = os.path.expanduser('~/.cache/ms-playwright')
+    if os.path.exists(playwright_cache):
+        print(f"\n{playwright_cache}: exists")
+        try:
+            for root, dirs, files in os.walk(playwright_cache):
+                level = root.replace(playwright_cache, '').count(os.sep)
+                indent = '  ' * level
+                print(f"{indent}{os.path.basename(root)}/")
+                subindent = '  ' * (level + 1)
+                for file in files[:20]:  # Limit files per directory
+                    file_path = os.path.join(root, file)
+                    try:
+                        size = os.path.getsize(file_path)
+                        print(f"{subindent}{file} ({size:,} bytes)")
+                    except:
+                        print(f"{subindent}{file}")
+                if len(files) > 20:
+                    print(f"{subindent}... and {len(files) - 20} more files")
+                if level > 3:  # Don't go too deep
+                    break
+        except Exception as e:
+            print(f"  Error exploring directory: {e}")
+    else:
+        print(f"\n{playwright_cache}: Does not exist")
+
     print("\n" + "=" * 80)
     print("TEST AGENT COMPLETED")
     print("=" * 80)
