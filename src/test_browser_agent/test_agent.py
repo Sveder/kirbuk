@@ -132,6 +132,20 @@ Be concise.""",
         size = os.path.getsize(item_path) if os.path.isfile(item_path) else 'N/A'
         print(f"  [{item_type}] {item} (size: {size})")
 
+    # List screenshots directory contents
+    print("\nSCREENSHOTS DIRECTORY CONTENTS:")
+    screenshots_dir = os.path.join('.', 'screenshots')
+    if os.path.exists(screenshots_dir) and os.path.isdir(screenshots_dir):
+        screenshot_files = os.listdir(screenshots_dir)
+        print(f"  Found {len(screenshot_files)} files in screenshots/")
+        for screenshot in sorted(screenshot_files):
+            screenshot_path = os.path.join(screenshots_dir, screenshot)
+            if os.path.isfile(screenshot_path):
+                size = os.path.getsize(screenshot_path)
+                print(f"    {screenshot} ({size:,} bytes)")
+    else:
+        print("  Screenshots directory not found or is not a directory")
+
     print("\n/tmp DIRECTORY CONTENTS (after execution):")
     if os.path.exists('/tmp'):
         tmp_items = os.listdir('/tmp')
