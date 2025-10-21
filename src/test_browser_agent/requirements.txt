@@ -1,0 +1,5 @@
+strands
+bedrock-agentcore
+strands-tools
+boto3
+sentry-sdk

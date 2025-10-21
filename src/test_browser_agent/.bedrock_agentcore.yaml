@@ -1,0 +1,24 @@
+default_agent: test_agent
+agents:
+  test_agent:
+    name: test_agent
+    entrypoint: test_agent.py
+    platform: linux/arm64
+    container_runtime: none
+    source_path: .
+    aws:
+      execution_role: arn:aws:iam::800622328366:role/AmazonBedrockAgentCoreSDKRuntime-eu-central-1-9c0804ec0c
+      execution_role_auto_create: false
+      account: '800622328366'
+      region: eu-central-1
+      ecr_repository: 800622328366.dkr.ecr.eu-central-1.amazonaws.com/bedrock-agentcore-test_agent
+      ecr_auto_create: false
+      network_configuration:
+        network_mode: PUBLIC
+        network_mode_config: null
+      protocol_configuration:
+        server_protocol: HTTP
+      observability:
+        enabled: true
+    memory:
+      mode: STM_ONLY
