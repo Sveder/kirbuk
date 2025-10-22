@@ -382,6 +382,244 @@ def get_video_duration(video_path):
         return 120.0
 
 
+def generate_end_slide(title, description, url, output_path, width=1280, height=720):
+    """Generate an end slide image with website details in brown theme
+
+    Args:
+        title: Website/product title
+        description: One-sentence description
+        url: Website URL
+        output_path: Path to save the PNG image
+        width: Image width in pixels (default: 1280)
+        height: Image height in pixels (default: 720)
+
+    Returns:
+        Path to the generated image
+    """
+    from PIL import Image, ImageDraw, ImageFont
+
+    try:
+        print(f"Generating end slide...")
+        print(f"Title: {title}")
+        print(f"Description: {description}")
+        print(f"URL: {url}")
+
+        # Kirbuk brown theme colors (matching website)
+        bg_color = "#8B4513"      # Brown background
+        text_color = "#FFF8DC"    # Cornsilk text
+        accent_color = "#D2691E"  # Chocolate accent
+
+        # Create image
+        img = Image.new('RGB', (width, height), color=bg_color)
+        draw = ImageDraw.Draw(img)
+
+        # Load fonts - try DejaVu fonts installed in Docker
+        try:
+            title_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 60)
+            desc_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 32)
+            url_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 40)
+            print("✓ Loaded DejaVu fonts")
+        except Exception as e:
+            print(f"⚠️  Could not load DejaVu fonts: {e}")
+            # Fallback to default font
+            title_font = desc_font = url_font = ImageFont.load_default()
+            print("⚠️  Using default font as fallback")
+
+        # Truncate text if too long
+        max_title_len = 40
+        max_desc_len = 80
+        max_url_len = 50
+
+        if len(title) > max_title_len:
+            title = title[:max_title_len-3] + "..."
+        if len(description) > max_desc_len:
+            description = description[:max_desc_len-3] + "..."
+        if len(url) > max_url_len:
+            url = url[:max_url_len-3] + "..."
+
+        # Calculate text positions (centered)
+        # Title at 30% height
+        title_bbox = draw.textbbox((0, 0), title, font=title_font)
+        title_width = title_bbox[2] - title_bbox[0]
+        title_x = (width - title_width) // 2
+        title_y = int(height * 0.30)
+
+        # Description at 50% height
+        desc_bbox = draw.textbbox((0, 0), description, font=desc_font)
+        desc_width = desc_bbox[2] - desc_bbox[0]
+        desc_x = (width - desc_width) // 2
+        desc_y = int(height * 0.50)
+
+        # URL at 65% height
+        url_bbox = draw.textbbox((0, 0), url, font=url_font)
+        url_width = url_bbox[2] - url_bbox[0]
+        url_x = (width - url_width) // 2
+        url_y = int(height * 0.65)
+
+        # Draw text with slight shadow for depth
+        shadow_offset = 3
+
+        # Title (with shadow)
+        draw.text((title_x + shadow_offset, title_y + shadow_offset), title, font=title_font, fill="#000000")
+        draw.text((title_x, title_y), title, font=title_font, fill=text_color)
+
+        # Description
+        draw.text((desc_x, desc_y), description, font=desc_font, fill=text_color)
+
+        # URL (with accent color and shadow)
+        draw.text((url_x + shadow_offset, url_y + shadow_offset), url, font=url_font, fill="#000000")
+        draw.text((url_x, url_y), url, font=url_font, fill=accent_color)
+
+        # Draw horizontal lines above and below URL
+        line_y_top = url_y - 20
+        line_y_bottom = url_y + 60
+        draw.rectangle([(int(width*0.2), line_y_top), (int(width*0.8), line_y_top + 2)], fill=accent_color)
+        draw.rectangle([(int(width*0.2), line_y_bottom), (int(width*0.8), line_y_bottom + 2)], fill=accent_color)
+
+        # Save image
+        img.save(output_path, 'PNG')
+        print(f"✓ End slide generated: {output_path} ({os.path.getsize(output_path):,} bytes)")
+
+        return output_path
+
+    except Exception as e:
+        print(f"Error generating end slide: {e}")
+        raise
+
+
+def append_end_slide_to_video(video_path, slide_path, output_path, slide_duration=5, fade_duration=1.0):
+    """Append end slide to video with fade transition
+
+    Args:
+        video_path: Path to input video file
+        slide_path: Path to end slide PNG image
+        output_path: Path for output video
+        slide_duration: How long to show the slide in seconds (default: 5)
+        fade_duration: Fade-in duration in seconds (default: 1.0)
+
+    Returns:
+        Path to the output video
+    """
+    import subprocess
+
+    try:
+        print(f"Appending end slide to video...")
+        print(f"Video: {video_path}")
+        print(f"Slide: {slide_path}")
+        print(f"Output: {output_path}")
+        print(f"Slide duration: {slide_duration}s, Fade: {fade_duration}s")
+
+        # FFmpeg command to append slide with fade
+        # We'll use concat filter to join video and slide segment
+        cmd = [
+            'ffmpeg',
+            '-i', video_path,                               # Input: original video
+            '-loop', '1',                                   # Loop the image
+            '-t', str(slide_duration),                      # Duration of slide
+            '-i', slide_path,                               # Input: end slide image
+            '-filter_complex',
+            # Scale slide to match video resolution and add fade-in
+            f'[1:v]scale=1280:720,format=yuv420p,'
+            f'fade=t=in:st=0:d={fade_duration}[slide];'
+            # Concatenate video and slide
+            f'[0:v][slide]concat=n=2:v=1:a=0[outv]',
+            '-map', '[outv]',                               # Map concatenated video
+            '-map', '0:a?',                                 # Map audio from original (if exists)
+            '-c:v', 'libvpx-vp9',                          # Video codec
+            '-c:a', 'copy',                                 # Copy audio codec
+            '-y',                                           # Overwrite output
+            output_path
+        ]
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=120
+        )
+
+        if result.returncode != 0:
+            print(f"FFmpeg stderr: {result.stderr}")
+            raise Exception(f"FFmpeg failed with return code {result.returncode}")
+
+        print(f"✓ End slide appended to video: {output_path} ({os.path.getsize(output_path):,} bytes)")
+        return output_path
+
+    except subprocess.TimeoutExpired:
+        print("FFmpeg timeout after 120 seconds")
+        raise Exception("Video concatenation timed out")
+    except Exception as e:
+        print(f"Error appending end slide: {e}")
+        raise
+
+
+def extract_product_info(narrative_script, product_url):
+    """Extract title and description from narrative using Claude
+
+    Args:
+        narrative_script: The narrative text from browser exploration
+        product_url: The product URL (used as fallback)
+
+    Returns:
+        Dictionary with 'title' and 'description' keys
+    """
+    try:
+        print("Extracting product title and description from narrative...")
+
+        agent = Agent(model=MODEL_ID)
+
+        prompt = f"""Extract the website/product title and a one-sentence description from this narrative:
+
+{narrative_script}
+
+Return ONLY a JSON object with this exact format (no other text):
+{{"title": "Website Title", "description": "One sentence description"}}
+
+Guidelines:
+- The title should be the product/website name (not just "Home Page" or "Landing Page")
+- The description should be one concise sentence explaining what the product does
+- If you cannot determine the title, extract it from the URL: {product_url}
+- Keep the description under 80 characters
+- Do not include quotes or extra formatting in the values"""
+
+        result = agent(prompt)
+        response_text = result.message.get('content', [{}])[0].get('text', str(result))
+
+        # Try to parse JSON from response
+        import json
+        import re
+
+        # Try to find JSON in the response
+        json_match = re.search(r'\{[^}]+\}', response_text)
+        if json_match:
+            data = json.loads(json_match.group())
+            title = data.get('title', product_url.split('/')[2])
+            description = data.get('description', 'Check out this product')
+        else:
+            # Fallback: use URL as title
+            title = product_url.split('/')[2]
+            description = 'Check out this product'
+
+        print(f"✓ Extracted - Title: {title}")
+        print(f"✓ Extracted - Description: {description}")
+
+        return {
+            'title': title,
+            'description': description
+        }
+
+    except Exception as e:
+        print(f"⚠️  Error extracting product info: {e}")
+        # Fallback to URL-based info
+        title = product_url.split('/')[2] if '/' in product_url else product_url
+        description = 'Check out this product'
+        print(f"⚠️  Using fallback - Title: {title}, Description: {description}")
+        return {
+            'title': title,
+            'description': description
+        }
+
+
 def save_voice_script_to_s3(voice_script, submission_id):
     """Save the SSML voice script to S3 in the staging area"""
     try:
@@ -1309,6 +1547,45 @@ def invoke(payload, context):
                                 print(f"→ Merging video and voice only...")
                                 merge_audio_video_with_ffmpeg(video_path, audio_path, merged_video_path)
                                 print(f"✓ Audio and video merged (size: {os.path.getsize(merged_video_path)} bytes)")
+
+                            # STEP 7.1: Add end slide to video
+                            print("\n" + "-" * 80)
+                            print("STEP 7.1: Adding end slide")
+                            print("-" * 80)
+                            try:
+                                # Extract product info from the narrative
+                                product_info = extract_product_info(response, product_url)
+
+                                # Generate end slide image
+                                end_slide_path = os.path.join(temp_dir, 'end_slide.png')
+                                generate_end_slide(
+                                    title=product_info['title'],
+                                    description=product_info['description'],
+                                    url=product_url,
+                                    output_path=end_slide_path
+                                )
+
+                                # Append end slide to merged video
+                                final_video_path = os.path.join(temp_dir, 'final_with_endslide.webm')
+                                append_end_slide_to_video(
+                                    video_path=merged_video_path,
+                                    slide_path=end_slide_path,
+                                    output_path=final_video_path,
+                                    slide_duration=5,    # 5 seconds
+                                    fade_duration=1.0    # 1 second fade-in
+                                )
+                                print(f"✓ End slide added to video (final size: {os.path.getsize(final_video_path)} bytes)")
+
+                                # Use final video with end slide for upload
+                                merged_video_path = final_video_path
+
+                            except Exception as endslide_error:
+                                print(f"⚠️  Error adding end slide: {endslide_error}")
+                                import traceback
+                                print(f"End slide error traceback: {traceback.format_exc()}")
+                                print("⚠️  Continuing with video without end slide")
+                                sentry_sdk.capture_exception(endslide_error)
+                                # Continue with merged_video_path (without end slide)
 
                             # Upload merged video back to S3 (overwrite the old one)
                             print(f"→ Uploading merged video to S3...")
