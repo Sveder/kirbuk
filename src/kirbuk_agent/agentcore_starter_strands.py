@@ -1159,7 +1159,7 @@ except:
 
 Requirements:
 1. Use async Playwright with Python
-2. Include proper imports and setup
+2. Include proper imports and setup (including 'import time' for timestamp tracking)
 3. Add appropriate waits and error handling - use page.wait_for_timeout() liberally
 4. Include comments explaining each step
 5. Make the script record video to 'output.webm' file
@@ -1174,6 +1174,17 @@ Requirements:
 12. Always use .first when selecting elements to avoid ambiguous locator errors
 13. Add generous timeouts (5-10 seconds) for element visibility checks
 14. If script gets stuck, it should gracefully continue instead of failing completely
+
+CRITICAL - TIMESTAMP LOGGING REQUIREMENT:
+15. At the START of the script (right after browser launch), record the start time: start_time = time.time()
+16. Before EVERY action (navigate, click, type, scroll, etc.), print a timestamp log message showing elapsed time and the action:
+    - Calculate elapsed time: elapsed = time.time() - start_time
+    - Format as MM:SS (e.g., "01:23" for 1 minute 23 seconds)
+    - Print format: print(f"{minutes:02d}:{seconds:02d} - [action description]")
+    - Example: print(f"{int(elapsed)//60:02d}:{int(elapsed)%60:02d} - Navigating to homepage")
+    - Example: print(f"{int(elapsed)//60:02d}:{int(elapsed)%60:02d} - Clicking on 'Features' button")
+    - Example: print(f"{int(elapsed)//60:02d}:{int(elapsed)%60:02d} - Scrolling to pricing section")
+17. These timestamp logs help synchronize the video with the voice narration and debug timing issues
 """
         )
 
