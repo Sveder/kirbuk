@@ -932,7 +932,7 @@ def synthesize_voice_with_polly(voice_script, submission_id):
         raise
 
 
-def generate_voice_script(script_text, product_url, video_duration_seconds=120, roast_mode=False, playwright_script=None):
+def generate_voice_script(script_text, product_url, video_duration_seconds=120, roast_mode=False, playwright_script=None, playwright_execution_log=None):
     """Generate an SSML voice script from the narrative script and Playwright code
 
     Args:
@@ -941,6 +941,7 @@ def generate_voice_script(script_text, product_url, video_duration_seconds=120, 
         video_duration_seconds: Exact duration of the video in seconds (default 120)
         roast_mode: If True, use humorous/sarcastic tone; if False, use professional tone
         playwright_script: The generated Playwright script code (optional but recommended)
+        playwright_execution_log: The stdout output from Playwright execution with timestamps (optional but highly recommended for sync)
 
     Returns:
         SSML voice script string
@@ -1047,13 +1048,34 @@ Your narration should:
 4. Explain what the user is seeing at each step
 5. Use the wait times in the script to pace your narration accordingly"""
 
+        # Add execution logs if available for PRECISE synchronization
+        if playwright_execution_log:
+            prompt += f"""
+
+CRITICAL - FOLLOW THESE EXACT TIMESTAMPS:
+The Playwright script was executed and logged each action with precise timestamps.
+Use these timestamps to synchronize your narration EXACTLY with the video:
+
+```
+{playwright_execution_log}
+```
+
+IMPORTANT SYNCHRONIZATION RULES:
+- Each timestamp shows EXACTLY when an action happened in the video (MM:SS format)
+- Your narration MUST align with these timestamps
+- Speak about each action just BEFORE or AS it happens in the video
+- Use <break> tags to create pauses that align your speech with the timestamp intervals
+- Example: If you see "00:05 - Navigating to homepage" and "00:08 - Clicking Features",
+  you should narrate about navigation, then add a ~3 second pause before talking about clicking Features
+- The timestamps are the ground truth - follow them precisely for perfect video/audio sync"""
+
         prompt += """
 
 Create an engaging voice-over that:
 - Follows the exact flow of actions in the Playwright script
 - Explains what's happening in the demo at each step
 - Highlights key features and benefits as they appear
-- Times the narration to match the video pacing
+- Times the narration to match the video pacing using the timestamp logs
 
 Return only the SSML code, nothing else."""
 
@@ -1218,7 +1240,11 @@ Additional user directions to incorporate:
 
 
 def execute_playwright_script(playwright_code, submission_id):
-    """Execute the Playwright script, merge audio with video, and upload the resulting video to S3"""
+    """Execute the Playwright script, merge audio with video, and upload the resulting video to S3
+
+    Returns:
+        tuple: (s3_key, stdout_output) - S3 key of uploaded video and the stdout output from script execution
+    """
     try:
         # Create a temporary directory for execution
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1364,7 +1390,27 @@ def execute_playwright_script(playwright_code, submission_id):
             s3_key = save_video_to_s3(video_path, submission_id)
             print(f"✓ Video uploaded to S3: {s3_key}")
 
-            return s3_key
+            # Save the stdout output (contains timestamp logs)
+            print("\n" + "-" * 80)
+            print("STEP 6.3: Saving script execution logs to S3")
+            print("-" * 80)
+            if result.stdout:
+                try:
+                    s3_client = boto3.client('s3', region_name=REGION)
+                    log_s3_key = f"{S3_STAGING_PREFIX}/{submission_id}/playwright_execution.log"
+                    s3_client.put_object(
+                        Bucket=S3_BUCKET,
+                        Key=log_s3_key,
+                        Body=result.stdout,
+                        ContentType='text/plain'
+                    )
+                    print(f"✓ Execution logs saved to S3: {log_s3_key}")
+                except Exception as log_error:
+                    print(f"⚠️  Failed to save execution logs: {log_error}")
+            else:
+                print("⚠️  No stdout output to save")
+
+            return s3_key, result.stdout
 
     except subprocess.TimeoutExpired:
         print("Playwright script execution timed out after 5 minutes")
@@ -1524,8 +1570,9 @@ def invoke(payload, context):
             print("STEP 4: Executing Playwright script to create video")
             print("=" * 80)
             video_duration = 120.0  # Default duration
+            playwright_execution_log = ""  # Capture execution logs with timestamps
             try:
-                video_s3_key = execute_playwright_script(playwright_code, submission_id)
+                video_s3_key, playwright_execution_log = execute_playwright_script(playwright_code, submission_id)
                 print(f"✓ Video successfully created and uploaded to S3: {video_s3_key}")
 
                 # Download video temporarily to measure duration
@@ -1556,7 +1603,8 @@ def invoke(payload, context):
                     payload['product_url'],
                     video_duration,
                     roast_mode,
-                    playwright_script=playwright_code  # Pass Playwright script for synchronization
+                    playwright_script=playwright_code,  # Pass Playwright script for synchronization
+                    playwright_execution_log=playwright_execution_log  # Pass execution logs with timestamps for precise sync
                 )
                 print(f"✓ Voice script generated ({len(voice_script)} characters)")
 
