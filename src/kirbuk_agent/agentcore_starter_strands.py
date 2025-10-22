@@ -235,10 +235,9 @@ def merge_audio_video_with_music(video_path, audio_path, music_path, output_path
 
         # FFmpeg command to merge video with mixed audio (voice + background music)
         # Filter complex:
-        # 1. Pad video with last frame if audio is longer (tpad filter)
-        # 2. Apply volume to voice track
-        # 3. Apply volume to music track and loop it
-        # 4. Mix both audio tracks together
+        # 1. Apply volume to voice track
+        # 2. Apply volume to music track and loop it
+        # 3. Mix both audio tracks together
         cmd = [
             'ffmpeg',
             '-i', video_path,                    # Input 0: video
@@ -246,14 +245,12 @@ def merge_audio_video_with_music(video_path, audio_path, music_path, output_path
             '-stream_loop', '-1',                # Loop music indefinitely
             '-i', music_path,                    # Input 2: background music
             '-filter_complex',
-            # Pad video with last frame to match longest audio stream
-            f'[0:v]tpad=stop_mode=clone:stop_duration=10[video];'  # Extend video by up to 10 seconds if needed
             f'[1:a]volume={voice_volume}[voice];'  # Voice at specified volume
             f'[2:a]volume={music_volume}[music];'  # Music at specified volume
             '[voice][music]amix=inputs=2:duration=first[audio]',  # Mix both, use voice duration
-            '-map', '[video]',                   # Use padded video
+            '-map', '0:v',                       # Use original video
             '-map', '[audio]',                   # Use mixed audio
-            '-c:v', 'libvpx-vp9',                # Re-encode video (needed for tpad)
+            '-c:v', 'copy',                      # Copy video stream without re-encoding
             '-c:a', 'libopus',                   # Encode audio to Opus for WebM
             '-shortest',                         # Match shortest stream duration (audio ends when voice ends)
             '-y',                                # Overwrite output file if exists
@@ -302,20 +299,15 @@ def merge_audio_video_with_ffmpeg(video_path, audio_path, output_path):
         print(f"Output: {output_path}")
 
         # FFmpeg command to merge audio and video
-        # Uses tpad filter to extend video with last frame if audio is longer
         # -i: input files
-        # -c:v libvpx-vp9: re-encode video (needed for tpad filter)
+        # -c:v copy: copy video stream without re-encoding (fast)
         # -c:a libopus: convert audio to Opus codec (WebM compatible)
         # -shortest: finish encoding when shortest input stream ends
         cmd = [
             'ffmpeg',
             '-i', video_path,        # Input video
             '-i', audio_path,        # Input audio
-            '-filter_complex',
-            '[0:v]tpad=stop_mode=clone:stop_duration=10[video]',  # Extend video by up to 10 seconds if needed
-            '-map', '[video]',       # Use padded video
-            '-map', '1:a',           # Use audio from input 1
-            '-c:v', 'libvpx-vp9',    # Re-encode video (needed for tpad)
+            '-c:v', 'copy',          # Copy video stream without re-encoding
             '-c:a', 'libopus',       # Convert audio to Opus for WebM
             '-shortest',             # Match shortest duration
             '-y',                    # Overwrite output file if exists

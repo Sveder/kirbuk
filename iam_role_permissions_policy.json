@@ -74,6 +74,17 @@
         "ecr:GetDownloadUrlForLayer"
       ],
       "Resource": "*"
+    },
+    {
+      "Sid": "BedrockAgentCoreBrowser",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock-agentcore:StartBrowserSession",
+        "bedrock-agentcore:StopBrowserSession",
+        "bedrock-agentcore:GetBrowserSession",
+        "bedrock-agentcore:SendBrowserCommand"
+      ],
+      "Resource": "*"
     }
   ]
 }
