@@ -630,14 +630,15 @@ def synthesize_voice_with_polly(voice_script, submission_id):
         raise
 
 
-def generate_voice_script(script_text, product_url, video_duration_seconds=120, roast_mode=False):
-    """Generate an SSML voice script from the narrative script
+def generate_voice_script(script_text, product_url, video_duration_seconds=120, roast_mode=False, playwright_script=None):
+    """Generate an SSML voice script from the narrative script and Playwright code
 
     Args:
         script_text: The narrative script from browser exploration
         product_url: URL of the product being demoed
         video_duration_seconds: Exact duration of the video in seconds (default 120)
         roast_mode: If True, use humorous/sarcastic tone; if False, use professional tone
+        playwright_script: The generated Playwright script code (optional but recommended)
 
     Returns:
         SSML voice script string
@@ -720,12 +721,38 @@ Requirements:
 The voice-over should guide the viewer through the demo, explaining features and benefits naturally."""
         )
 
+        # Build prompt with narrative and optionally Playwright script
         prompt = f"""Create an SSML voice-over script for a demo video of this website: {product_url}
 
 The demo follows this narrative:
-{script_text}
+{script_text}"""
 
-Create an engaging voice-over that explains what's happening in the demo and highlights the key features and benefits.
+        # Add Playwright script if available for better synchronization
+        if playwright_script:
+            prompt += f"""
+
+IMPORTANT - Synchronize with Playwright Script:
+The video is created from this Playwright automation script. Use it to understand the EXACT actions and timing:
+
+```python
+{playwright_script}
+```
+
+Your narration should:
+1. Match the sequence of actions in the Playwright script
+2. Describe what's happening as each action executes
+3. Time pauses to align with page.wait_for_timeout() calls
+4. Explain what the user is seeing at each step
+5. Use the wait times in the script to pace your narration accordingly"""
+
+        prompt += """
+
+Create an engaging voice-over that:
+- Follows the exact flow of actions in the Playwright script
+- Explains what's happening in the demo at each step
+- Highlights key features and benefits as they appear
+- Times the narration to match the video pacing
+
 Return only the SSML code, nothing else."""
 
         result = agent(prompt)
@@ -1173,13 +1200,19 @@ def invoke(payload, context):
                 print("⚠️  Continuing with default 2-minute duration for audio generation")
                 sentry_sdk.capture_exception(video_error)
 
-            # NOW generate voice script based on ACTUAL video duration
+            # NOW generate voice script based on ACTUAL video duration AND Playwright script
             print("\n" + "=" * 80)
-            print(f"STEP 5: Generating SSML voice script (for {video_duration:.1f}s video)")
+            print(f"STEP 5: Generating SSML voice script (for {video_duration:.1f}s video, with Playwright sync)")
             print("=" * 80)
             voice_script = None
             try:
-                voice_script = generate_voice_script(response, payload['product_url'], video_duration, roast_mode)
+                voice_script = generate_voice_script(
+                    response,
+                    payload['product_url'],
+                    video_duration,
+                    roast_mode,
+                    playwright_script=playwright_code  # Pass Playwright script for synchronization
+                )
                 print(f"✓ Voice script generated ({len(voice_script)} characters)")
 
                 voice_script_s3_key = save_voice_script_to_s3(voice_script, submission_id)
