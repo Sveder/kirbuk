@@ -18,29 +18,7 @@ Kirbuk is a web application that collects information about your SaaS product an
 - Comprehensive product information collection
 - Test user credentials support for secure product exploration
 - Custom direction input for tailored video content
-- "Roast Mode" option for humorous, spicy product videos
 - Email delivery of finished videos
-
-## Tech Stack
-
-- **Backend**: Django 5.2.7
-- **Web Server**: Nginx + Gunicorn
-- **Monitoring**: Sentry
-- **Video Generation**: AWS AgentCore (external service)
-
-## Project Structure
-
-```
-kirbuk/
-├── src/
-│   └── kirbuk_web_app/
-│       ├── kirbuk/          # Main Django app
-│       ├── myproject/       # Django project settings
-│       ├── manage.py
-│       ├── requirements.txt
-│       └── gunicorn_config.py
-└── README.md
-```
 
 ## Installation
 
@@ -59,16 +37,3 @@ python manage.py migrate
 ```bash
 python manage.py runserver
 ```
-
-## Production Deployment
-
-The application is configured to run with:
-- Gunicorn as the WSGI server (3 workers)
-- Nginx as the reverse proxy
-- Systemd service for process management
-
-## Environment Variables
-
-- `DJANGO_SECRET_KEY` - Django secret key
-- `SENTRY_DSN` - Sentry monitoring DSN
-- `AWS_AGENTCORE_ENDPOINT` - AWS AgentCore API endpoint (future)
