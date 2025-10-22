@@ -167,10 +167,11 @@
                 <h3>Status</h3>
                 <p id="json-status">📝 Waiting for payload...</p>
                 <p id="script-status">📜 Waiting for script...</p>
-                <p id="voice-script-status">🎙️ Waiting for voice script...</p>
-                <p id="voice-audio-status">🔊 Waiting for voice audio...</p>
                 <p id="playwright-status">🎭 Waiting for Playwright script...</p>
                 <p id="video-status">🎬 Waiting for video...</p>
+                <p id="voice-script-status">🎙️ Waiting for voice script...</p>
+                <p id="voice-audio-status">🔊 Waiting for voice audio...</p>
+                <p id="final-composition-status">🎞️ Waiting for final video composition...</p>
 
                 <div id="video-content">
                     <h4>Demo Video:</h4>
@@ -286,17 +287,26 @@
                         playwrightContentDiv.querySelector('pre').textContent = status.playwright_content;
                     }
 
-                    // Update video status
+                    // Update video status (raw video without audio)
                     const videoStatusEl = document.getElementById('video-status');
+                    if (status.video_created) {
+                        videoStatusEl.textContent = '✅ Video recorded';
+                        videoStatusEl.style.color = '#90EE90';
+                    }
+
+                    // Update final composition status (video with audio)
+                    const finalCompositionStatusEl = document.getElementById('final-composition-status');
                     const videoContentDiv = document.getElementById('video-content');
                     const videoPlayer = document.getElementById('video-player');
                     const downloadBtn = document.getElementById('download-video-btn');
 
-                    if (status.video_created && status.video_url) {
-                        videoStatusEl.textContent = '✅ Video created';
-                        videoStatusEl.style.color = '#90EE90';
+                    // Final composition is done when both video and voice audio exist
+                    // (The video file gets updated with audio in the final composition step)
+                    if (status.video_created && status.voice_audio_created && status.video_url) {
+                        finalCompositionStatusEl.textContent = '✅ Final video composition complete';
+                        finalCompositionStatusEl.style.color = '#90EE90';
 
-                        // Show video player with the video
+                        // Show video player with the final composed video
                         videoContentDiv.style.display = 'block';
                         videoPlayer.src = status.video_url;
                         videoPlayer.load(); // Explicitly load the video
@@ -314,7 +324,7 @@
                             document.body.removeChild(a);
                         };
 
-                        // Stop polling once video is created
+                        // Stop polling once final composition is complete
                         if (pollingInterval) {
                             clearInterval(pollingInterval);
                         }
