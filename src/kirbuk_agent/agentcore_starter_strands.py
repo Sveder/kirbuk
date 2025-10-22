@@ -815,6 +815,14 @@ def generate_playwright_script(script_text, product_url, additional_directions=N
 Given a narrative script of what to do on a website, create a complete, runnable Playwright Python script.
 Make sure the script is configured to save videos using context.record_video_dir="videos/" and context.record_video_size={"width": 1280, "height":720}.
 
+CRITICAL - DO NOT CREATE LOGIN/REGISTRATION FLOWS:
+- DO NOT attempt to sign up, register, or create accounts
+- DO NOT attempt to log in unless test credentials are explicitly provided
+- DO NOT click "Sign Up", "Register", "Login", "Sign In" buttons
+- Focus on exploring the public-facing website only
+- Show features, pricing, about page, documentation - NOT account creation
+- If you encounter a login wall, STOP and explore other public pages instead
+
 IMPORTANT TIMING: The script should create a video that is approximately 2 minutes long.
 - Each action (click, type, navigate) takes 3-5 seconds on screen
 - Add page.wait_for_timeout() calls between actions to let content be visible (typically 2000-4000ms)
@@ -879,7 +887,7 @@ The script should follow this narrative:
 Additional user directions to incorporate:
 {additional_directions}"""
 
-        prompt += "\n\nIMPORTANT: The script MUST record video and save it as 'output.webm'. Return only the Python code, nothing else."
+        prompt += "\n\nIMPORTANT: The script MUST record video and save it as 'output.webm'. Return only the Python code, nothing else.\n\nREMINDER: DO NOT include any login, signup, or registration actions in the script. Stay on public pages only."
 
         result = agent(prompt)
         playwright_code = result.message.get('content', [{}])[0].get('text', str(result))
