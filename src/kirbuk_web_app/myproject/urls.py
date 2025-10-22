@@ -17,7 +17,7 @@ Including another URLconf
 from django.urls import path
 from django.conf import settings
 from django.conf.urls.static import static
-from kirbuk.views import hello_world, submit_form, submission_status, check_status
+from kirbuk.views import hello_world, submit_form, submission_status, submission_video, check_status
 
 def trigger_error(request):
     division_by_zero = 1 / 0
@@ -26,6 +26,7 @@ urlpatterns = [
     path('', hello_world, name='hello_world'),
     path('submit', submit_form, name='submit_form'),
     path('submission/<str:submission_id>', submission_status, name='submission_status'),
+    path('video/<str:submission_id>', submission_video, name='submission_video'),
     path('api/status/<str:submission_id>', check_status, name='check_status'),
     path('sentry-debug/', trigger_error),
 ]

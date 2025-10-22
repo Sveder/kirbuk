@@ -707,14 +707,15 @@ def save_voice_script_to_s3(voice_script, submission_id):
         raise
 
 
-def send_email_notification(subject, body, recipient_email, submission_id=None):
+def send_email_notification(subject, body, recipient_email, submission_id=None, use_video_link=False):
     """Send email notification using AWS SES
 
     Args:
         subject: Email subject line
         body: Email body text
         recipient_email: The user's email address to send to
-        submission_id: Optional submission ID for status link
+        submission_id: Optional submission ID for status/video link
+        use_video_link: If True, link to /video/ page; if False, link to /submission/ status page
     """
     try:
         ses_client = boto3.client('ses', region_name=REGION)
@@ -785,8 +786,15 @@ def send_email_notification(subject, body, recipient_email, submission_id=None):
             <p>{body}</p>
 """
         if submission_id:
-            status_url = f"https://kirbuk.sveder.com/submission/{submission_id}"
-            html_body += f"""            <a href="{status_url}" class="button">View Status</a>
+            if use_video_link:
+                # Link to video page for completion emails
+                video_url = f"https://kirbuk.sveder.com/video/{submission_id}"
+                html_body += f"""            <a href="{video_url}" class="button">Watch Your Video</a>
+"""
+            else:
+                # Link to status page for progress emails
+                status_url = f"https://kirbuk.sveder.com/submission/{submission_id}"
+                html_body += f"""            <a href="{status_url}" class="button">View Status</a>
 """
 
         html_body += """        </div>
@@ -799,7 +807,10 @@ def send_email_notification(subject, body, recipient_email, submission_id=None):
 
         text_body = f"{subject}\n\n{body}"
         if submission_id:
-            text_body += f"\n\nView submission status: https://kirbuk.sveder.com/submission/{submission_id}"
+            if use_video_link:
+                text_body += f"\n\nWatch your video: https://kirbuk.sveder.com/video/{submission_id}"
+            else:
+                text_body += f"\n\nView submission status: https://kirbuk.sveder.com/submission/{submission_id}"
 
         response = ses_client.send_email(
             Source=SOURCE_EMAIL,
@@ -1786,13 +1797,14 @@ def invoke(payload, context):
         print(f"Submission ID: {submission_id}")
         print("=" * 80)
 
-        # Send success email notification
+        # Send success email notification with video link
         if submission_id and user_email:
             send_email_notification(
                 subject="Kirbuk: Demo Video Generation Complete",
-                body=f"Demo video has been successfully generated for {product_url}",
+                body=f"Your demo video for {product_url} is ready! Click the button below to watch it.",
                 recipient_email=user_email,
-                submission_id=submission_id
+                submission_id=submission_id,
+                use_video_link=True  # Use video page instead of status page
             )
 
         return {"response": response}

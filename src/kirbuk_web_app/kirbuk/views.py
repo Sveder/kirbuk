@@ -125,6 +125,11 @@ def submission_status(request, submission_id):
     return render(request, 'status.html', {'submission_id': submission_id})
 
 
+def submission_video(request, submission_id):
+    """Render the final video page for a specific submission"""
+    return render(request, 'video.html', {'submission_id': submission_id})
+
+
 @csrf_exempt
 def check_status(request, submission_id):
     """Check the status of a submission by looking at S3"""

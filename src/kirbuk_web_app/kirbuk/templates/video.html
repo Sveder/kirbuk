@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Your Video is Ready! - Kirbuk</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: #8B4513;
+            color: #FFF8DC;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            color: #FFF8DC;
+            text-align: center;
+        }
+
+        .subtitle {
+            text-align: center;
+            font-size: 1.2rem;
+            margin-bottom: 2rem;
+            opacity: 0.9;
+        }
+
+        .video-card {
+            background-color: #A0522D;
+            padding: 2rem;
+            border-radius: 8px;
+            border: 2px solid #D2691E;
+        }
+
+        #video-container {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        #video-player {
+            width: 100%;
+            max-width: 800px;
+            margin: 0 auto;
+            border-radius: 8px;
+            background-color: #000;
+            display: none;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 3rem;
+            font-size: 1.2rem;
+        }
+
+        .loading::after {
+            content: '...';
+            display: inline-block;
+            animation: dots 1.5s steps(4, end) infinite;
+        }
+
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+
+        .button-container {
+            text-align: center;
+            margin-top: 1.5rem;
+        }
+
+        .download-btn {
+            display: inline-block;
+            padding: 1rem 2rem;
+            background-color: #D2691E;
+            color: #FFF8DC;
+            text-decoration: none;
+            border-radius: 8px;
+            transition: background-color 0.2s;
+            font-weight: 600;
+            font-size: 1.1rem;
+            border: none;
+            cursor: pointer;
+        }
+
+        .download-btn:hover {
+            background-color: #CD853F;
+        }
+
+        .download-btn:disabled {
+            background-color: #666;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        .info-box {
+            background-color: rgba(255, 255, 255, 0.1);
+            padding: 1rem;
+            border-radius: 4px;
+            margin-top: 2rem;
+            border-left: 4px solid #F4A460;
+        }
+
+        .info-box p {
+            margin: 0;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-top: 2rem;
+            padding: 0.75rem 1.5rem;
+            background-color: #A0522D;
+            color: #FFF8DC;
+            text-decoration: none;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+            border: 1px solid #D2691E;
+        }
+
+        .back-link:hover {
+            background-color: #8B4513;
+        }
+
+        .error-message {
+            text-align: center;
+            padding: 2rem;
+            color: #FFB6C1;
+            font-size: 1.1rem;
+            display: none;
+        }
+
+        @media (max-width: 640px) {
+            h1 {
+                font-size: 2rem;
+            }
+
+            .subtitle {
+                font-size: 1rem;
+            }
+
+            .video-card {
+                padding: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎉 Your Video is Ready!</h1>
+        <p class="subtitle">Your demo video has been successfully generated</p>
+
+        <div class="video-card">
+            <div id="loading" class="loading">Loading your video</div>
+            <div id="error" class="error-message">We couldn't load your video. Please try refreshing the page or contact support.</div>
+
+            <div id="video-container">
+                <video id="video-player" controls>
+                    Your browser does not support the video tag.
+                </video>
+
+                <div class="button-container">
+                    <button id="download-btn" class="download-btn" disabled>
+                        Download Video
+                    </button>
+                </div>
+
+                <div class="info-box">
+                    <p>
+                        📹 <strong>Your video is ready!</strong> You can watch it here or download it for your use.
+                    </p>
+                    <p style="margin-top: 0.5rem; opacity: 0.8; font-size: 0.85rem;">
+                        Note: Video links are valid for 1 hour. If the link expires, please refresh the page to generate a new access link.
+                    </p>
+                </div>
+            </div>
+
+            <div style="text-align: center;">
+                <a href="/" class="back-link">Create Another Video</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const submissionId = '{{ submission_id }}';
+        let retryCount = 0;
+        const maxRetries = 3;
+
+        async function loadVideo() {
+            try {
+                const response = await fetch(`/api/status/${submissionId}`);
+                if (response.ok) {
+                    const status = await response.json();
+
+                    // Check if video is ready (final composition complete)
+                    if (status.video_created && status.voice_audio_created && status.video_url) {
+                        // Hide loading, show video
+                        document.getElementById('loading').style.display = 'none';
+                        document.getElementById('error').style.display = 'none';
+
+                        const videoContainer = document.getElementById('video-container');
+                        const videoPlayer = document.getElementById('video-player');
+                        const downloadBtn = document.getElementById('download-btn');
+
+                        videoContainer.style.display = 'block';
+                        videoPlayer.style.display = 'block';
+                        videoPlayer.src = status.video_url;
+                        videoPlayer.load();
+
+                        // Enable and configure download button
+                        downloadBtn.disabled = false;
+                        downloadBtn.onclick = () => {
+                            const a = document.createElement('a');
+                            a.href = status.video_url;
+                            a.download = `kirbuk-demo-${submissionId}.webm`;
+                            a.target = '_blank';
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                        };
+                    } else {
+                        // Video not ready yet, retry after a delay
+                        if (retryCount < maxRetries) {
+                            retryCount++;
+                            setTimeout(loadVideo, 2000); // Retry after 2 seconds
+                        } else {
+                            // Max retries reached, show error
+                            document.getElementById('loading').style.display = 'none';
+                            document.getElementById('error').style.display = 'block';
+                        }
+                    }
+                } else {
+                    throw new Error('Failed to fetch video status');
+                }
+            } catch (error) {
+                console.error('Error loading video:', error);
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('error').style.display = 'block';
+            }
+        }
+
+        // Load video when page loads
+        loadVideo();
+    </script>
+</body>
+</html>
