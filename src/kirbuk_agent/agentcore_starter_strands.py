@@ -22,6 +22,7 @@ app = BedrockAgentCoreApp()
 MEMORY_ID = os.getenv("BEDROCK_AGENTCORE_MEMORY_ID")
 REGION = os.getenv("AWS_REGION")
 MODEL_ID = "eu.amazon.nova-pro-v1:0"
+PLAYWRIGHT_MODEL_ID = "qwen.qwen3-coder-30b-a3b-v1:0"  # Use Qwen Coder for Playwright script generation
 KIRBUK_BROWSER_IDENTIFIER = "kirbuk_browser_tool-l2a6PWdtMy"
 S3_BUCKET = "sveder-kirbuk"
 S3_STAGING_PREFIX = "staging_area"
@@ -809,7 +810,7 @@ def generate_playwright_script(script_text, product_url, additional_directions=N
     try:
         # Create a simple agent without tools to generate the Playwright script
         agent = Agent(
-            model=MODEL_ID,
+            model=PLAYWRIGHT_MODEL_ID,
             system_prompt="""You are an expert at creating Playwright Python scripts for web automation and demo video creation.
 Given a narrative script of what to do on a website, create a complete, runnable Playwright Python script.
 Make sure the script is configured to save videos using context.record_video_dir="videos/" and context.record_video_size={"width": 1280, "height":720}.
