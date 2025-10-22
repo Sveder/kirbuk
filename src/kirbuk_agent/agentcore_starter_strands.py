@@ -3,6 +3,8 @@ Strands Agent sample with AgentCore
 """
 import os
 import json
+import tempfile
+import subprocess
 import boto3
 import sentry_sdk
 from strands import Agent
@@ -262,7 +264,7 @@ def merge_audio_video_with_music(video_path, audio_path, music_path, output_path
             cmd,
             capture_output=True,
             text=True,
-            timeout=120  # 2 minute timeout
+             timeout=600
         )
 
         if result.returncode != 0:
@@ -319,7 +321,7 @@ def merge_audio_video_with_ffmpeg(video_path, audio_path, output_path):
             cmd,
             capture_output=True,
             text=True,
-            timeout=120  # 2 minute timeout
+            timeout=600
         )
 
         if result.returncode != 0:
@@ -535,7 +537,7 @@ def append_end_slide_to_video(video_path, slide_path, output_path, slide_duratio
             cmd,
             capture_output=True,
             text=True,
-            timeout=120
+            timeout=600
         )
 
         if result.returncode != 0:
@@ -1145,9 +1147,6 @@ Additional user directions to incorporate:
 
 def execute_playwright_script(playwright_code, submission_id):
     """Execute the Playwright script, merge audio with video, and upload the resulting video to S3"""
-    import tempfile
-    import subprocess
-
     try:
         # Create a temporary directory for execution
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1172,44 +1171,50 @@ def execute_playwright_script(playwright_code, submission_id):
                 print(f"... ({len(script_lines) - 50} more lines)")
             print("=" * 80 + "\n")
 
-            # Execute the script
-            print("Running Playwright script...")
-            print(f"Command: python {script_path}")
-            print(f"Working directory: {temp_dir}")
-            print(f"Timeout: 300 seconds (5 minutes)")
+            # Retry 3 times if the script fails
+            for i in range(3):
+                # Execute the script
+                print("Running Playwright script...")
+                print(f"Command: python {script_path}")
+                print(f"Working directory: {temp_dir}")
 
-            result = subprocess.run(
-                ['python', script_path],
-                cwd=temp_dir,
-                capture_output=True,
-                text=True,
-                timeout=300  # 5 minute timeout
-            )
+                result = subprocess.run(
+                    ['python', script_path],
+                    cwd=temp_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=1000
+                )
 
-            print(f"\n{'=' * 80}")
-            print(f"SCRIPT EXECUTION COMPLETED")
-            print(f"{'=' * 80}")
-            print(f"Return code: {result.returncode}")
-            print(f"Stdout length: {len(result.stdout)} characters")
-            print(f"Stderr length: {len(result.stderr)} characters")
-
-            if result.stdout:
                 print(f"\n{'=' * 80}")
-                print(f"STDOUT:")
+                print(f"SCRIPT EXECUTION COMPLETED")
                 print(f"{'=' * 80}")
-                print(result.stdout)
-                print(f"{'=' * 80}\n")
-            else:
-                print("⚠️  No stdout output")
+                print(f"Return code: {result.returncode}")
+                print(f"Stdout length: {len(result.stdout)} characters")
+                print(f"Stderr length: {len(result.stderr)} characters")
 
-            if result.stderr:
-                print(f"\n{'=' * 80}")
-                print(f"STDERR:")
-                print(f"{'=' * 80}")
-                print(result.stderr)
-                print(f"{'=' * 80}\n")
-            else:
-                print("✓ No stderr output")
+                if result.stdout:
+                    print(f"\n{'=' * 80}")
+                    print(f"STDOUT:")
+                    print(f"{'=' * 80}")
+                    print(result.stdout)
+                    print(f"{'=' * 80}\n")
+                else:
+                    print("⚠️  No stdout output")
+
+                if result.stderr:
+                    print(f"\n{'=' * 80}")
+                    print(f"STDERR:")
+                    print(f"{'=' * 80}")
+                    print(result.stderr)
+                    print(f"{'=' * 80}\n")
+                else:
+                    print("✓ No stderr output")
+
+                if result.returncode == 0:
+                    break
+
+                print(f"Playwright script failed with return code {result.returncode}: {result.stderr}. Retrying...")
 
             if result.returncode != 0:
                 raise Exception(f"Playwright script failed with return code {result.returncode}: {result.stderr}")
