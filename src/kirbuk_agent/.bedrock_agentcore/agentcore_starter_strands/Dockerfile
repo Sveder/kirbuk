@@ -43,13 +43,14 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install essential international fonts for proper character rendering
-# This fixes Hebrew, Arabic, Japanese, Chinese, Korean and other language support
+# This fixes Hebrew, Arabic, Japanese, Chinese, Korean and emoji support
 # Also install DejaVu fonts for end slide text rendering
 # Using minimal font set to stay under 1GB image size limit
 RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-noto-core \
     fonts-noto-cjk \
     fonts-noto-mono \
+    fonts-noto-color-emoji \
     fonts-dejavu-core \
     fonts-dejavu-extra \
     && rm -rf /var/lib/apt/lists/* \
