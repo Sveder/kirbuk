@@ -399,6 +399,7 @@ def generate_end_slide(title, description, url, output_path, width=1280, height=
         Path to the generated image
     """
     from PIL import Image, ImageDraw, ImageFont
+    import textwrap
 
     try:
         print(f"Generating end slide...")
@@ -418,7 +419,7 @@ def generate_end_slide(title, description, url, output_path, width=1280, height=
         # Load fonts - try DejaVu fonts installed in Docker
         try:
             title_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 60)
-            desc_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 32)
+            desc_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 28)
             url_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 40)
             print("✓ Loaded DejaVu fonts")
         except Exception as e:
@@ -427,46 +428,63 @@ def generate_end_slide(title, description, url, output_path, width=1280, height=
             title_font = desc_font = url_font = ImageFont.load_default()
             print("⚠️  Using default font as fallback")
 
-        # Truncate text if too long
-        max_title_len = 40
-        max_desc_len = 80
-        max_url_len = 50
+        # Wrap text into multiple lines if needed
+        max_title_chars = 40
+        max_desc_chars_per_line = 60
+        max_url_chars = 50
 
-        if len(title) > max_title_len:
-            title = title[:max_title_len-3] + "..."
-        if len(description) > max_desc_len:
-            description = description[:max_desc_len-3] + "..."
-        if len(url) > max_url_len:
-            url = url[:max_url_len-3] + "..."
+        # Wrap title (max 2 lines)
+        title_lines = textwrap.wrap(title, width=max_title_chars, max_lines=2)
+        if not title_lines:
+            title_lines = [title[:max_title_chars]]
 
-        # Calculate text positions (centered)
-        # Title at 30% height
-        title_bbox = draw.textbbox((0, 0), title, font=title_font)
-        title_width = title_bbox[2] - title_bbox[0]
-        title_x = (width - title_width) // 2
-        title_y = int(height * 0.30)
+        # Wrap description (max 3 lines)
+        desc_lines = textwrap.wrap(description, width=max_desc_chars_per_line, max_lines=3)
+        if not desc_lines:
+            desc_lines = [description[:max_desc_chars_per_line]]
 
-        # Description at 50% height
-        desc_bbox = draw.textbbox((0, 0), description, font=desc_font)
-        desc_width = desc_bbox[2] - desc_bbox[0]
-        desc_x = (width - desc_width) // 2
-        desc_y = int(height * 0.50)
+        # Truncate URL if too long
+        if len(url) > max_url_chars:
+            url = url[:max_url_chars-3] + "..."
 
-        # URL at 65% height
+        # Calculate positions
+        shadow_offset = 3
+
+        # Title at 25% height (moved up slightly to make room for multi-line)
+        title_y_start = int(height * 0.25)
+        title_line_height = 70
+
+        # Draw title lines (centered)
+        for i, line in enumerate(title_lines):
+            title_bbox = draw.textbbox((0, 0), line, font=title_font)
+            title_width = title_bbox[2] - title_bbox[0]
+            title_x = (width - title_width) // 2
+            title_y = title_y_start + (i * title_line_height)
+
+            # Shadow
+            draw.text((title_x + shadow_offset, title_y + shadow_offset), line, font=title_font, fill="#000000")
+            # Text
+            draw.text((title_x, title_y), line, font=title_font, fill=text_color)
+
+        # Description at 48% height (adjusted for multi-line)
+        desc_y_start = int(height * 0.48)
+        desc_line_height = 35
+
+        # Draw description lines (centered)
+        for i, line in enumerate(desc_lines):
+            desc_bbox = draw.textbbox((0, 0), line, font=desc_font)
+            desc_width = desc_bbox[2] - desc_bbox[0]
+            desc_x = (width - desc_width) // 2
+            desc_y = desc_y_start + (i * desc_line_height)
+
+            # Text (no shadow for description to keep it lighter)
+            draw.text((desc_x, desc_y), line, font=desc_font, fill=text_color)
+
+        # URL at 70% height (moved down to avoid overlap)
         url_bbox = draw.textbbox((0, 0), url, font=url_font)
         url_width = url_bbox[2] - url_bbox[0]
         url_x = (width - url_width) // 2
-        url_y = int(height * 0.65)
-
-        # Draw text with slight shadow for depth
-        shadow_offset = 3
-
-        # Title (with shadow)
-        draw.text((title_x + shadow_offset, title_y + shadow_offset), title, font=title_font, fill="#000000")
-        draw.text((title_x, title_y), title, font=title_font, fill=text_color)
-
-        # Description
-        draw.text((desc_x, desc_y), description, font=desc_font, fill=text_color)
+        url_y = int(height * 0.70)
 
         # URL (with accent color and shadow)
         draw.text((url_x + shadow_offset, url_y + shadow_offset), url, font=url_font, fill="#000000")
@@ -490,10 +508,12 @@ def generate_end_slide(title, description, url, output_path, width=1280, height=
 
 
 def append_end_slide_to_video(video_path, slide_path, output_path, slide_duration=5, fade_duration=1.0):
-    """Append end slide to video with fade transition
+    """Append end slide to silent video with fade transition
+
+    Note: This should be called BEFORE adding audio to the video
 
     Args:
-        video_path: Path to input video file
+        video_path: Path to input video file (silent/no audio)
         slide_path: Path to end slide PNG image
         output_path: Path for output video
         slide_duration: How long to show the slide in seconds (default: 5)
@@ -511,24 +531,20 @@ def append_end_slide_to_video(video_path, slide_path, output_path, slide_duratio
         print(f"Output: {output_path}")
         print(f"Slide duration: {slide_duration}s, Fade: {fade_duration}s")
 
-        # FFmpeg command to append slide with fade
-        # We'll use concat filter to join video and slide segment
+        # FFmpeg command to append slide with fade (no audio handling needed)
         cmd = [
             'ffmpeg',
-            '-i', video_path,                               # Input: original video
+            '-i', video_path,                               # Input: original video (silent)
             '-loop', '1',                                   # Loop the image
             '-t', str(slide_duration),                      # Duration of slide
             '-i', slide_path,                               # Input: end slide image
             '-filter_complex',
-            # Scale slide to match video resolution and add fade-in
+            # Scale slide to match resolution, add fade-in, then concatenate
             f'[1:v]scale=1280:720,format=yuv420p,'
             f'fade=t=in:st=0:d={fade_duration}[slide];'
-            # Concatenate video and slide
             f'[0:v][slide]concat=n=2:v=1:a=0[outv]',
             '-map', '[outv]',                               # Map concatenated video
-            '-map', '0:a?',                                 # Map audio from original (if exists)
             '-c:v', 'libvpx-vp9',                          # Video codec
-            '-c:a', 'copy',                                 # Copy audio codec
             '-y',                                           # Overwrite output
             output_path
         ]
@@ -1473,6 +1489,60 @@ def invoke(payload, context):
                 print("⚠️  Continuing with default 2-minute duration for audio generation")
                 sentry_sdk.capture_exception(video_error)
 
+            # STEP 4.5: Add end slide to the SILENT video BEFORE adding audio
+            print("\n" + "=" * 80)
+            print("STEP 4.5: Adding end slide to silent video")
+            print("=" * 80)
+            try:
+                import tempfile
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    s3_client = boto3.client('s3', region_name=REGION)
+
+                    # Download silent video from S3
+                    silent_video_path = os.path.join(temp_dir, 'silent_video.webm')
+                    print(f"→ Downloading silent video from S3: {video_s3_key}")
+                    s3_client.download_file(S3_BUCKET, video_s3_key, silent_video_path)
+                    print(f"✓ Video downloaded (size: {os.path.getsize(silent_video_path)} bytes)")
+
+                    # Extract product info from the narrative
+                    product_info = extract_product_info(response, product_url)
+
+                    # Generate end slide image
+                    end_slide_path = os.path.join(temp_dir, 'end_slide.png')
+                    generate_end_slide(
+                        title=product_info['title'],
+                        description=product_info['description'],
+                        url=product_url,
+                        output_path=end_slide_path
+                    )
+
+                    # Append end slide to silent video
+                    video_with_endslide_path = os.path.join(temp_dir, 'video_with_endslide.webm')
+                    append_end_slide_to_video(
+                        video_path=silent_video_path,
+                        slide_path=end_slide_path,
+                        output_path=video_with_endslide_path,
+                        slide_duration=5,    # 5 seconds
+                        fade_duration=1.0    # 1 second fade-in
+                    )
+                    print(f"✓ End slide added to video (size: {os.path.getsize(video_with_endslide_path)} bytes)")
+
+                    # Measure new video duration (with end slide)
+                    video_duration = get_video_duration(video_with_endslide_path)
+
+                    # Upload video with end slide back to S3 (overwrite)
+                    print(f"→ Uploading video with end slide to S3...")
+                    video_s3_key = save_video_to_s3(video_with_endslide_path, submission_id)
+                    print(f"✓ Video with end slide uploaded to S3: {video_s3_key}")
+
+            except Exception as endslide_error:
+                print(f"⚠️  Error adding end slide: {endslide_error}")
+                import traceback
+                print(f"End slide error traceback: {traceback.format_exc()}")
+                print("⚠️  Continuing with video without end slide")
+                sentry_sdk.capture_exception(endslide_error)
+                # Continue with original video (without end slide)
+
             # NOW generate voice script based on ACTUAL video duration AND Playwright script
             print("\n" + "=" * 80)
             print(f"STEP 5: Generating SSML voice script (for {video_duration:.1f}s video, with Playwright sync)")
@@ -1536,7 +1606,7 @@ def invoke(payload, context):
                                 print(f"🎵 Selected background music: {music_name}")
 
                                 # Merge video, voice, and background music
-                                print(f"→ Merging video, voice, and background music with FFmpeg...")
+                                print(f"→ Merging video (with end slide), voice, and background music with FFmpeg...")
                                 merge_audio_video_with_music(
                                     video_path,
                                     audio_path,
@@ -1549,51 +1619,12 @@ def invoke(payload, context):
                             else:
                                 # No background music available, merge without it
                                 print(f"⚠️  No background music files found in {music_dir}")
-                                print(f"→ Merging video and voice only...")
+                                print(f"→ Merging video (with end slide) and voice only...")
                                 merge_audio_video_with_ffmpeg(video_path, audio_path, merged_video_path)
                                 print(f"✓ Audio and video merged (size: {os.path.getsize(merged_video_path)} bytes)")
 
-                            # STEP 7.1: Add end slide to video
-                            print("\n" + "-" * 80)
-                            print("STEP 7.1: Adding end slide")
-                            print("-" * 80)
-                            try:
-                                # Extract product info from the narrative
-                                product_info = extract_product_info(response, product_url)
-
-                                # Generate end slide image
-                                end_slide_path = os.path.join(temp_dir, 'end_slide.png')
-                                generate_end_slide(
-                                    title=product_info['title'],
-                                    description=product_info['description'],
-                                    url=product_url,
-                                    output_path=end_slide_path
-                                )
-
-                                # Append end slide to merged video
-                                final_video_path = os.path.join(temp_dir, 'final_with_endslide.webm')
-                                append_end_slide_to_video(
-                                    video_path=merged_video_path,
-                                    slide_path=end_slide_path,
-                                    output_path=final_video_path,
-                                    slide_duration=5,    # 5 seconds
-                                    fade_duration=1.0    # 1 second fade-in
-                                )
-                                print(f"✓ End slide added to video (final size: {os.path.getsize(final_video_path)} bytes)")
-
-                                # Use final video with end slide for upload
-                                merged_video_path = final_video_path
-
-                            except Exception as endslide_error:
-                                print(f"⚠️  Error adding end slide: {endslide_error}")
-                                import traceback
-                                print(f"End slide error traceback: {traceback.format_exc()}")
-                                print("⚠️  Continuing with video without end slide")
-                                sentry_sdk.capture_exception(endslide_error)
-                                # Continue with merged_video_path (without end slide)
-
-                            # Upload merged video back to S3 (overwrite the old one)
-                            print(f"→ Uploading merged video to S3...")
+                            # Upload final video back to S3 (overwrite the old one)
+                            print(f"→ Uploading final video with audio to S3...")
                             video_s3_key = save_video_to_s3(merged_video_path, submission_id)
                             print(f"✓ Final video with audio uploaded to S3: {video_s3_key}")
 
