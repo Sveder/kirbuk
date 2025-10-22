@@ -3,6 +3,8 @@ Strands Agent sample with AgentCore
 """
 import os
 import json
+import tempfile
+import subprocess
 import boto3
 import sentry_sdk
 from strands import Agent
@@ -262,7 +264,7 @@ def merge_audio_video_with_music(video_path, audio_path, music_path, output_path
             cmd,
             capture_output=True,
             text=True,
-            timeout=120  # 2 minute timeout
+             timeout=600
         )
 
         if result.returncode != 0:
@@ -319,7 +321,7 @@ def merge_audio_video_with_ffmpeg(video_path, audio_path, output_path):
             cmd,
             capture_output=True,
             text=True,
-            timeout=120  # 2 minute timeout
+            timeout=600
         )
 
         if result.returncode != 0:
@@ -380,6 +382,305 @@ def get_video_duration(video_path):
         # Return default 2 minutes if we can't measure
         print("⚠️  Defaulting to 120 seconds (2 minutes)")
         return 120.0
+
+
+def get_audio_duration(audio_path):
+    """Get the duration of an audio file in seconds using ffprobe
+
+    Args:
+        audio_path: Path to the audio file
+
+    Returns:
+        Duration in seconds (float)
+    """
+    import subprocess
+    import json
+
+    try:
+        # Use ffprobe to get audio duration
+        cmd = [
+            'ffprobe',
+            '-v', 'quiet',
+            '-print_format', 'json',
+            '-show_format',
+            audio_path
+        ]
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+
+        if result.returncode != 0:
+            raise Exception(f"ffprobe failed: {result.stderr}")
+
+        data = json.loads(result.stdout)
+        duration = float(data['format']['duration'])
+
+        print(f"✓ Audio duration: {duration:.2f} seconds ({duration/60:.2f} minutes)")
+        return duration
+
+    except Exception as e:
+        print(f"Error getting audio duration: {e}")
+        # Return default 0 if we can't measure
+        print("⚠️  Defaulting to 0 seconds")
+        return 0.0
+
+
+def generate_end_slide(title, description, url, output_path, width=1280, height=720):
+    """Generate an end slide image with website details in brown theme
+
+    Args:
+        title: Website/product title
+        description: One-sentence description
+        url: Website URL
+        output_path: Path to save the PNG image
+        width: Image width in pixels (default: 1280)
+        height: Image height in pixels (default: 720)
+
+    Returns:
+        Path to the generated image
+    """
+    from PIL import Image, ImageDraw, ImageFont
+    import textwrap
+
+    try:
+        print(f"Generating end slide...")
+        print(f"Title: {title}")
+        print(f"Description: {description}")
+        print(f"URL: {url}")
+
+        # Kirbuk brown theme colors (matching website)
+        bg_color = "#8B4513"      # Brown background
+        text_color = "#FFF8DC"    # Cornsilk text
+        accent_color = "#D2691E"  # Chocolate accent
+
+        # Create image
+        img = Image.new('RGB', (width, height), color=bg_color)
+        draw = ImageDraw.Draw(img)
+
+        # Load fonts - try DejaVu fonts installed in Docker
+        try:
+            title_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 60)
+            desc_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 28)
+            url_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 40)
+            print("✓ Loaded DejaVu fonts")
+        except Exception as e:
+            print(f"⚠️  Could not load DejaVu fonts: {e}")
+            # Fallback to default font
+            title_font = desc_font = url_font = ImageFont.load_default()
+            print("⚠️  Using default font as fallback")
+
+        # Wrap text into multiple lines if needed
+        max_title_chars = 40
+        max_desc_chars_per_line = 60
+        max_url_chars = 50
+
+        # Wrap title (max 2 lines)
+        title_lines = textwrap.wrap(title, width=max_title_chars, max_lines=2)
+        if not title_lines:
+            title_lines = [title[:max_title_chars]]
+
+        # Wrap description (max 3 lines)
+        desc_lines = textwrap.wrap(description, width=max_desc_chars_per_line, max_lines=3)
+        if not desc_lines:
+            desc_lines = [description[:max_desc_chars_per_line]]
+
+        # Truncate URL if too long
+        if len(url) > max_url_chars:
+            url = url[:max_url_chars-3] + "..."
+
+        # Calculate positions
+        shadow_offset = 3
+
+        # Title at 25% height (moved up slightly to make room for multi-line)
+        title_y_start = int(height * 0.25)
+        title_line_height = 70
+
+        # Draw title lines (centered)
+        for i, line in enumerate(title_lines):
+            title_bbox = draw.textbbox((0, 0), line, font=title_font)
+            title_width = title_bbox[2] - title_bbox[0]
+            title_x = (width - title_width) // 2
+            title_y = title_y_start + (i * title_line_height)
+
+            # Shadow
+            draw.text((title_x + shadow_offset, title_y + shadow_offset), line, font=title_font, fill="#000000")
+            # Text
+            draw.text((title_x, title_y), line, font=title_font, fill=text_color)
+
+        # Description at 48% height (adjusted for multi-line)
+        desc_y_start = int(height * 0.48)
+        desc_line_height = 35
+
+        # Draw description lines (centered)
+        for i, line in enumerate(desc_lines):
+            desc_bbox = draw.textbbox((0, 0), line, font=desc_font)
+            desc_width = desc_bbox[2] - desc_bbox[0]
+            desc_x = (width - desc_width) // 2
+            desc_y = desc_y_start + (i * desc_line_height)
+
+            # Text (no shadow for description to keep it lighter)
+            draw.text((desc_x, desc_y), line, font=desc_font, fill=text_color)
+
+        # URL at 70% height (moved down to avoid overlap)
+        url_bbox = draw.textbbox((0, 0), url, font=url_font)
+        url_width = url_bbox[2] - url_bbox[0]
+        url_x = (width - url_width) // 2
+        url_y = int(height * 0.70)
+
+        # URL (with accent color and shadow)
+        draw.text((url_x + shadow_offset, url_y + shadow_offset), url, font=url_font, fill="#000000")
+        draw.text((url_x, url_y), url, font=url_font, fill=accent_color)
+
+        # Draw horizontal lines above and below URL
+        line_y_top = url_y - 20
+        line_y_bottom = url_y + 60
+        draw.rectangle([(int(width*0.2), line_y_top), (int(width*0.8), line_y_top + 2)], fill=accent_color)
+        draw.rectangle([(int(width*0.2), line_y_bottom), (int(width*0.8), line_y_bottom + 2)], fill=accent_color)
+
+        # Save image
+        img.save(output_path, 'PNG')
+        print(f"✓ End slide generated: {output_path} ({os.path.getsize(output_path):,} bytes)")
+
+        return output_path
+
+    except Exception as e:
+        print(f"Error generating end slide: {e}")
+        raise
+
+
+def append_end_slide_to_video(video_path, slide_path, output_path, slide_duration=5, fade_duration=1.0):
+    """Append end slide to silent video with fade transition
+
+    Note: This should be called BEFORE adding audio to the video
+
+    Args:
+        video_path: Path to input video file (silent/no audio)
+        slide_path: Path to end slide PNG image
+        output_path: Path for output video
+        slide_duration: How long to show the slide in seconds (default: 5)
+        fade_duration: Fade-in duration in seconds (default: 1.0)
+
+    Returns:
+        Path to the output video
+    """
+    import subprocess
+
+    try:
+        print(f"Appending end slide to video...")
+        print(f"Video: {video_path}")
+        print(f"Slide: {slide_path}")
+        print(f"Output: {output_path}")
+        print(f"Slide duration: {slide_duration}s, Fade: {fade_duration}s")
+
+        # FFmpeg command to append slide with fade (no audio handling needed)
+        cmd = [
+            'ffmpeg',
+            '-i', video_path,                               # Input: original video (silent)
+            '-loop', '1',                                   # Loop the image
+            '-t', str(slide_duration),                      # Duration of slide
+            '-i', slide_path,                               # Input: end slide image
+            '-filter_complex',
+            # Scale slide to match resolution, add fade-in, then concatenate
+            f'[1:v]scale=1280:720,format=yuv420p,'
+            f'fade=t=in:st=0:d={fade_duration}[slide];'
+            f'[0:v][slide]concat=n=2:v=1:a=0[outv]',
+            '-map', '[outv]',                               # Map concatenated video
+            '-c:v', 'libvpx-vp9',                          # Video codec
+            '-y',                                           # Overwrite output
+            output_path
+        ]
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=600
+        )
+
+        if result.returncode != 0:
+            print(f"FFmpeg stderr: {result.stderr}")
+            raise Exception(f"FFmpeg failed with return code {result.returncode}")
+
+        print(f"✓ End slide appended to video: {output_path} ({os.path.getsize(output_path):,} bytes)")
+        return output_path
+
+    except subprocess.TimeoutExpired:
+        print("FFmpeg timeout after 120 seconds")
+        raise Exception("Video concatenation timed out")
+    except Exception as e:
+        print(f"Error appending end slide: {e}")
+        raise
+
+
+def extract_product_info(narrative_script, product_url):
+    """Extract title and description from narrative using Claude
+
+    Args:
+        narrative_script: The narrative text from browser exploration
+        product_url: The product URL (used as fallback)
+
+    Returns:
+        Dictionary with 'title' and 'description' keys
+    """
+    try:
+        print("Extracting product title and description from narrative...")
+
+        agent = Agent(model=MODEL_ID)
+
+        prompt = f"""Extract the website/product title and a one-sentence description from this narrative:
+
+{narrative_script}
+
+Return ONLY a JSON object with this exact format (no other text):
+{{"title": "Website Title", "description": "One sentence description"}}
+
+Guidelines:
+- The title should be the product/website name (not just "Home Page" or "Landing Page")
+- The description should be one concise sentence explaining what the product does
+- If you cannot determine the title, extract it from the URL: {product_url}
+- Keep the description under 80 characters
+- Do not include quotes or extra formatting in the values"""
+
+        result = agent(prompt)
+        response_text = result.message.get('content', [{}])[0].get('text', str(result))
+
+        # Try to parse JSON from response
+        import json
+        import re
+
+        # Try to find JSON in the response
+        json_match = re.search(r'\{[^}]+\}', response_text)
+        if json_match:
+            data = json.loads(json_match.group())
+            title = data.get('title', product_url.split('/')[2])
+            description = data.get('description', 'Check out this product')
+        else:
+            # Fallback: use URL as title
+            title = product_url.split('/')[2]
+            description = 'Check out this product'
+
+        print(f"✓ Extracted - Title: {title}")
+        print(f"✓ Extracted - Description: {description}")
+
+        return {
+            'title': title,
+            'description': description
+        }
+
+    except Exception as e:
+        print(f"⚠️  Error extracting product info: {e}")
+        # Fallback to URL-based info
+        title = product_url.split('/')[2] if '/' in product_url else product_url
+        description = 'Check out this product'
+        print(f"⚠️  Using fallback - Title: {title}, Description: {description}")
+        return {
+            'title': title,
+            'description': description
+        }
 
 
 def save_voice_script_to_s3(voice_script, submission_id):
@@ -907,9 +1208,6 @@ Additional user directions to incorporate:
 
 def execute_playwright_script(playwright_code, submission_id):
     """Execute the Playwright script, merge audio with video, and upload the resulting video to S3"""
-    import tempfile
-    import subprocess
-
     try:
         # Create a temporary directory for execution
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -934,44 +1232,50 @@ def execute_playwright_script(playwright_code, submission_id):
                 print(f"... ({len(script_lines) - 50} more lines)")
             print("=" * 80 + "\n")
 
-            # Execute the script
-            print("Running Playwright script...")
-            print(f"Command: python {script_path}")
-            print(f"Working directory: {temp_dir}")
-            print(f"Timeout: 300 seconds (5 minutes)")
+            # Retry 3 times if the script fails
+            for i in range(3):
+                # Execute the script
+                print("Running Playwright script...")
+                print(f"Command: python {script_path}")
+                print(f"Working directory: {temp_dir}")
 
-            result = subprocess.run(
-                ['python', script_path],
-                cwd=temp_dir,
-                capture_output=True,
-                text=True,
-                timeout=300  # 5 minute timeout
-            )
+                result = subprocess.run(
+                    ['python', script_path],
+                    cwd=temp_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=1000
+                )
 
-            print(f"\n{'=' * 80}")
-            print(f"SCRIPT EXECUTION COMPLETED")
-            print(f"{'=' * 80}")
-            print(f"Return code: {result.returncode}")
-            print(f"Stdout length: {len(result.stdout)} characters")
-            print(f"Stderr length: {len(result.stderr)} characters")
-
-            if result.stdout:
                 print(f"\n{'=' * 80}")
-                print(f"STDOUT:")
+                print(f"SCRIPT EXECUTION COMPLETED")
                 print(f"{'=' * 80}")
-                print(result.stdout)
-                print(f"{'=' * 80}\n")
-            else:
-                print("⚠️  No stdout output")
+                print(f"Return code: {result.returncode}")
+                print(f"Stdout length: {len(result.stdout)} characters")
+                print(f"Stderr length: {len(result.stderr)} characters")
 
-            if result.stderr:
-                print(f"\n{'=' * 80}")
-                print(f"STDERR:")
-                print(f"{'=' * 80}")
-                print(result.stderr)
-                print(f"{'=' * 80}\n")
-            else:
-                print("✓ No stderr output")
+                if result.stdout:
+                    print(f"\n{'=' * 80}")
+                    print(f"STDOUT:")
+                    print(f"{'=' * 80}")
+                    print(result.stdout)
+                    print(f"{'=' * 80}\n")
+                else:
+                    print("⚠️  No stdout output")
+
+                if result.stderr:
+                    print(f"\n{'=' * 80}")
+                    print(f"STDERR:")
+                    print(f"{'=' * 80}")
+                    print(result.stderr)
+                    print(f"{'=' * 80}\n")
+                else:
+                    print("✓ No stderr output")
+
+                if result.returncode == 0:
+                    break
+
+                print(f"Playwright script failed with return code {result.returncode}: {result.stderr}. Retrying...")
 
             if result.returncode != 0:
                 raise Exception(f"Playwright script failed with return code {result.returncode}: {result.stderr}")
@@ -1230,7 +1534,7 @@ def invoke(payload, context):
                 print("⚠️  Continuing with default 2-minute duration for audio generation")
                 sentry_sdk.capture_exception(video_error)
 
-            # NOW generate voice script based on ACTUAL video duration AND Playwright script
+            # STEP 5: Generate voice script and audio FIRST (before end slide)
             print("\n" + "=" * 80)
             print(f"STEP 5: Generating SSML voice script (for {video_duration:.1f}s video, with Playwright sync)")
             print("=" * 80)
@@ -1255,6 +1559,82 @@ def invoke(payload, context):
                 try:
                     voice_audio_s3_key = synthesize_voice_with_polly(voice_script, submission_id)
                     print(f"✓ Voice audio synthesized and saved to S3: {voice_audio_s3_key}")
+
+                    # STEP 6.5: Add end slide to video NOW (after audio generation)
+                    print("\n" + "=" * 80)
+                    print("STEP 6.5: Adding end slide to video with calculated duration")
+                    print("=" * 80)
+                    try:
+                        import tempfile
+                        with tempfile.TemporaryDirectory() as temp_dir:
+                            s3_client = boto3.client('s3', region_name=REGION)
+
+                            # Download silent video from S3
+                            silent_video_path = os.path.join(temp_dir, 'silent_video.webm')
+                            print(f"→ Downloading silent video from S3: {video_s3_key}")
+                            s3_client.download_file(S3_BUCKET, video_s3_key, silent_video_path)
+                            print(f"✓ Video downloaded (size: {os.path.getsize(silent_video_path)} bytes)")
+
+                            # Download audio from S3 to measure duration
+                            audio_path = os.path.join(temp_dir, 'voice.mp3')
+                            print(f"→ Downloading audio from S3: {voice_audio_s3_key}")
+                            s3_client.download_file(S3_BUCKET, voice_audio_s3_key, audio_path)
+                            print(f"✓ Audio downloaded (size: {os.path.getsize(audio_path)} bytes)")
+
+                            # Measure audio duration
+                            audio_duration = get_audio_duration(audio_path)
+
+                            # Calculate slide duration based on video vs audio length
+                            # If audio > video: slide fills the gap so audio finishes
+                            # If video > audio: slide shows for 5 seconds minimum
+                            if audio_duration > video_duration:
+                                slide_duration = audio_duration - video_duration
+                                print(f"📊 Audio ({audio_duration:.1f}s) > Video ({video_duration:.1f}s)")
+                                print(f"   → Slide will fill {slide_duration:.1f}s gap so audio finishes")
+                            else:
+                                slide_duration = 5.0  # Minimum 5 seconds
+                                print(f"📊 Video ({video_duration:.1f}s) >= Audio ({audio_duration:.1f}s)")
+                                print(f"   → Slide will show for minimum {slide_duration:.1f}s")
+
+                            # Extract product info from the narrative
+                            product_info = extract_product_info(response, product_url)
+
+                            # Generate end slide image
+                            end_slide_path = os.path.join(temp_dir, 'end_slide.png')
+                            generate_end_slide(
+                                title=product_info['title'],
+                                description=product_info['description'],
+                                url=product_url,
+                                output_path=end_slide_path
+                            )
+
+                            # Append end slide to silent video with calculated duration
+                            video_with_endslide_path = os.path.join(temp_dir, 'video_with_endslide.webm')
+                            append_end_slide_to_video(
+                                video_path=silent_video_path,
+                                slide_path=end_slide_path,
+                                output_path=video_with_endslide_path,
+                                slide_duration=slide_duration,
+                                fade_duration=1.0    # 1 second fade-in
+                            )
+                            print(f"✓ End slide added to video (size: {os.path.getsize(video_with_endslide_path)} bytes)")
+
+                            # Measure new video duration (with end slide)
+                            new_video_duration = get_video_duration(video_with_endslide_path)
+                            print(f"✓ New video duration with end slide: {new_video_duration:.1f}s")
+
+                            # Upload video with end slide back to S3 (overwrite)
+                            print(f"→ Uploading video with end slide to S3...")
+                            video_s3_key = save_video_to_s3(video_with_endslide_path, submission_id)
+                            print(f"✓ Video with end slide uploaded to S3: {video_s3_key}")
+
+                    except Exception as endslide_error:
+                        print(f"⚠️  Error adding end slide: {endslide_error}")
+                        import traceback
+                        print(f"End slide error traceback: {traceback.format_exc()}")
+                        print("⚠️  Continuing with video without end slide")
+                        sentry_sdk.capture_exception(endslide_error)
+                        # Continue with original video (without end slide)
 
                     # STEP 7: Merge audio with video now that both exist
                     print("\n" + "=" * 80)
@@ -1292,8 +1672,8 @@ def invoke(payload, context):
                                 music_name = os.path.basename(selected_music)
                                 print(f"🎵 Selected background music: {music_name}")
 
-                                # Merge video, voice, and background music
-                                print(f"→ Merging video, voice, and background music with FFmpeg...")
+                                # Merge video (already has end slide), voice, and background music
+                                print(f"→ Merging video with end slide, voice, and background music with FFmpeg...")
                                 merge_audio_video_with_music(
                                     video_path,
                                     audio_path,
@@ -1306,12 +1686,12 @@ def invoke(payload, context):
                             else:
                                 # No background music available, merge without it
                                 print(f"⚠️  No background music files found in {music_dir}")
-                                print(f"→ Merging video and voice only...")
+                                print(f"→ Merging video with end slide and voice only...")
                                 merge_audio_video_with_ffmpeg(video_path, audio_path, merged_video_path)
                                 print(f"✓ Audio and video merged (size: {os.path.getsize(merged_video_path)} bytes)")
 
-                            # Upload merged video back to S3 (overwrite the old one)
-                            print(f"→ Uploading merged video to S3...")
+                            # Upload final video back to S3 (overwrite the old one)
+                            print(f"→ Uploading final video with audio to S3...")
                             video_s3_key = save_video_to_s3(merged_video_path, submission_id)
                             print(f"✓ Final video with audio uploaded to S3: {video_s3_key}")
 
