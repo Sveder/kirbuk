@@ -998,12 +998,33 @@ def execute_playwright_script(playwright_code, submission_id):
                         break
 
                 if not found_video:
-                    error_msg = "Video file 'output.webm' was not created by the script.\n"
-                    error_msg += f"Temp directory contents: {os.listdir(temp_dir)}\n"
-                    error_msg += f"Expected path: {video_path}\n"
-                    error_msg += "Script may have failed silently or saved video with different name."
-                    raise Exception(error_msg)
-            else:
+                    # Final fallback: Find ANY .webm file and use the latest one
+                    print("⚠️  No video found with expected names, searching for any .webm files...")
+                    webm_files = []
+                    for root, dirs, files in os.walk(temp_dir):
+                        for file in files:
+                            if file.endswith('.webm'):
+                                full_path = os.path.join(root, file)
+                                webm_files.append((full_path, os.path.getmtime(full_path)))
+
+                    if webm_files:
+                        # Sort by modification time (newest first) and take the latest
+                        webm_files.sort(key=lambda x: x[1], reverse=True)
+                        found_video = webm_files[0][0]
+                        print(f"✓ Found .webm file: {found_video}")
+                        # Rename/copy to output.webm
+                        video_path = os.path.join(temp_dir, 'output.webm')
+                        import shutil
+                        shutil.copy2(found_video, video_path)
+                        print(f"✓ Copied to: {video_path}")
+                    else:
+                        error_msg = "Video file 'output.webm' was not created by the script.\n"
+                        error_msg += f"Temp directory contents: {os.listdir(temp_dir)}\n"
+                        error_msg += f"Expected path: {video_path}\n"
+                        error_msg += "Script may have failed silently or saved video with different name."
+                        raise Exception(error_msg)
+
+            if os.path.exists(video_path):
                 video_size = os.path.getsize(video_path)
                 print(f"✓ Video file found: {video_path} ({video_size:,} bytes)")
 
