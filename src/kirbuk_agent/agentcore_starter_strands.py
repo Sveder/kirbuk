@@ -1695,9 +1695,10 @@ def invoke(payload, context):
                         sentry_sdk.capture_exception(endslide_error)
                         # Continue with original video (without end slide)
 
-                    # STEP 7: Merge audio with video now that both exist
+                    # STEP 7: FINAL VIDEO COMPOSITION - Merge audio with video now that both exist
                     print("\n" + "=" * 80)
-                    print("STEP 7: Merging audio with video and background music")
+                    print("STEP 7: FINAL VIDEO COMPOSITION")
+                    print("Merging audio with video (includes end slide) and background music")
                     print("=" * 80)
                     try:
                         import tempfile
@@ -1753,6 +1754,9 @@ def invoke(payload, context):
                             print(f"→ Uploading final video with audio to S3...")
                             video_s3_key = save_video_to_s3(merged_video_path, submission_id)
                             print(f"✓ Final video with audio uploaded to S3: {video_s3_key}")
+                            print("\n" + "=" * 80)
+                            print("✅ FINAL VIDEO COMPOSITION COMPLETED")
+                            print("=" * 80)
 
                     except Exception as merge_error:
                         print(f"✗ Error merging audio with video: {merge_error}")
