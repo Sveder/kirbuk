@@ -23,8 +23,8 @@ app = BedrockAgentCoreApp()
 
 MEMORY_ID = os.getenv("BEDROCK_AGENTCORE_MEMORY_ID")
 REGION = os.getenv("AWS_REGION")
-MODEL_ID = "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
-PLAYWRIGHT_MODEL_ID = "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
+MODEL_ID = "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
+PLAYWRIGHT_MODEL_ID = "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
 KIRBUK_BROWSER_IDENTIFIER = "kirbuk_browser_tool-l2a6PWdtMy"
 S3_BUCKET = "sveder-kirbuk"
 S3_STAGING_PREFIX = "staging_area"
