@@ -384,6 +384,51 @@ def get_video_duration(video_path):
         return 120.0
 
 
+def get_audio_duration(audio_path):
+    """Get the duration of an audio file in seconds using ffprobe
+
+    Args:
+        audio_path: Path to the audio file
+
+    Returns:
+        Duration in seconds (float)
+    """
+    import subprocess
+    import json
+
+    try:
+        # Use ffprobe to get audio duration
+        cmd = [
+            'ffprobe',
+            '-v', 'quiet',
+            '-print_format', 'json',
+            '-show_format',
+            audio_path
+        ]
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+
+        if result.returncode != 0:
+            raise Exception(f"ffprobe failed: {result.stderr}")
+
+        data = json.loads(result.stdout)
+        duration = float(data['format']['duration'])
+
+        print(f"✓ Audio duration: {duration:.2f} seconds ({duration/60:.2f} minutes)")
+        return duration
+
+    except Exception as e:
+        print(f"Error getting audio duration: {e}")
+        # Return default 0 if we can't measure
+        print("⚠️  Defaulting to 0 seconds")
+        return 0.0
+
+
 def generate_end_slide(title, description, url, output_path, width=1280, height=720):
     """Generate an end slide image with website details in brown theme
 
@@ -1489,61 +1534,7 @@ def invoke(payload, context):
                 print("⚠️  Continuing with default 2-minute duration for audio generation")
                 sentry_sdk.capture_exception(video_error)
 
-            # STEP 4.5: Add end slide to the SILENT video BEFORE adding audio
-            print("\n" + "=" * 80)
-            print("STEP 4.5: Adding end slide to silent video")
-            print("=" * 80)
-            try:
-                import tempfile
-                with tempfile.TemporaryDirectory() as temp_dir:
-                    s3_client = boto3.client('s3', region_name=REGION)
-
-                    # Download silent video from S3
-                    silent_video_path = os.path.join(temp_dir, 'silent_video.webm')
-                    print(f"→ Downloading silent video from S3: {video_s3_key}")
-                    s3_client.download_file(S3_BUCKET, video_s3_key, silent_video_path)
-                    print(f"✓ Video downloaded (size: {os.path.getsize(silent_video_path)} bytes)")
-
-                    # Extract product info from the narrative
-                    product_info = extract_product_info(response, product_url)
-
-                    # Generate end slide image
-                    end_slide_path = os.path.join(temp_dir, 'end_slide.png')
-                    generate_end_slide(
-                        title=product_info['title'],
-                        description=product_info['description'],
-                        url=product_url,
-                        output_path=end_slide_path
-                    )
-
-                    # Append end slide to silent video
-                    video_with_endslide_path = os.path.join(temp_dir, 'video_with_endslide.webm')
-                    append_end_slide_to_video(
-                        video_path=silent_video_path,
-                        slide_path=end_slide_path,
-                        output_path=video_with_endslide_path,
-                        slide_duration=5,    # 5 seconds
-                        fade_duration=1.0    # 1 second fade-in
-                    )
-                    print(f"✓ End slide added to video (size: {os.path.getsize(video_with_endslide_path)} bytes)")
-
-                    # Measure new video duration (with end slide)
-                    video_duration = get_video_duration(video_with_endslide_path)
-
-                    # Upload video with end slide back to S3 (overwrite)
-                    print(f"→ Uploading video with end slide to S3...")
-                    video_s3_key = save_video_to_s3(video_with_endslide_path, submission_id)
-                    print(f"✓ Video with end slide uploaded to S3: {video_s3_key}")
-
-            except Exception as endslide_error:
-                print(f"⚠️  Error adding end slide: {endslide_error}")
-                import traceback
-                print(f"End slide error traceback: {traceback.format_exc()}")
-                print("⚠️  Continuing with video without end slide")
-                sentry_sdk.capture_exception(endslide_error)
-                # Continue with original video (without end slide)
-
-            # NOW generate voice script based on ACTUAL video duration AND Playwright script
+            # STEP 5: Generate voice script and audio FIRST (before end slide)
             print("\n" + "=" * 80)
             print(f"STEP 5: Generating SSML voice script (for {video_duration:.1f}s video, with Playwright sync)")
             print("=" * 80)
@@ -1568,6 +1559,82 @@ def invoke(payload, context):
                 try:
                     voice_audio_s3_key = synthesize_voice_with_polly(voice_script, submission_id)
                     print(f"✓ Voice audio synthesized and saved to S3: {voice_audio_s3_key}")
+
+                    # STEP 6.5: Add end slide to video NOW (after audio generation)
+                    print("\n" + "=" * 80)
+                    print("STEP 6.5: Adding end slide to video with calculated duration")
+                    print("=" * 80)
+                    try:
+                        import tempfile
+                        with tempfile.TemporaryDirectory() as temp_dir:
+                            s3_client = boto3.client('s3', region_name=REGION)
+
+                            # Download silent video from S3
+                            silent_video_path = os.path.join(temp_dir, 'silent_video.webm')
+                            print(f"→ Downloading silent video from S3: {video_s3_key}")
+                            s3_client.download_file(S3_BUCKET, video_s3_key, silent_video_path)
+                            print(f"✓ Video downloaded (size: {os.path.getsize(silent_video_path)} bytes)")
+
+                            # Download audio from S3 to measure duration
+                            audio_path = os.path.join(temp_dir, 'voice.mp3')
+                            print(f"→ Downloading audio from S3: {voice_audio_s3_key}")
+                            s3_client.download_file(S3_BUCKET, voice_audio_s3_key, audio_path)
+                            print(f"✓ Audio downloaded (size: {os.path.getsize(audio_path)} bytes)")
+
+                            # Measure audio duration
+                            audio_duration = get_audio_duration(audio_path)
+
+                            # Calculate slide duration based on video vs audio length
+                            # If audio > video: slide fills the gap so audio finishes
+                            # If video > audio: slide shows for 5 seconds minimum
+                            if audio_duration > video_duration:
+                                slide_duration = audio_duration - video_duration
+                                print(f"📊 Audio ({audio_duration:.1f}s) > Video ({video_duration:.1f}s)")
+                                print(f"   → Slide will fill {slide_duration:.1f}s gap so audio finishes")
+                            else:
+                                slide_duration = 5.0  # Minimum 5 seconds
+                                print(f"📊 Video ({video_duration:.1f}s) >= Audio ({audio_duration:.1f}s)")
+                                print(f"   → Slide will show for minimum {slide_duration:.1f}s")
+
+                            # Extract product info from the narrative
+                            product_info = extract_product_info(response, product_url)
+
+                            # Generate end slide image
+                            end_slide_path = os.path.join(temp_dir, 'end_slide.png')
+                            generate_end_slide(
+                                title=product_info['title'],
+                                description=product_info['description'],
+                                url=product_url,
+                                output_path=end_slide_path
+                            )
+
+                            # Append end slide to silent video with calculated duration
+                            video_with_endslide_path = os.path.join(temp_dir, 'video_with_endslide.webm')
+                            append_end_slide_to_video(
+                                video_path=silent_video_path,
+                                slide_path=end_slide_path,
+                                output_path=video_with_endslide_path,
+                                slide_duration=slide_duration,
+                                fade_duration=1.0    # 1 second fade-in
+                            )
+                            print(f"✓ End slide added to video (size: {os.path.getsize(video_with_endslide_path)} bytes)")
+
+                            # Measure new video duration (with end slide)
+                            new_video_duration = get_video_duration(video_with_endslide_path)
+                            print(f"✓ New video duration with end slide: {new_video_duration:.1f}s")
+
+                            # Upload video with end slide back to S3 (overwrite)
+                            print(f"→ Uploading video with end slide to S3...")
+                            video_s3_key = save_video_to_s3(video_with_endslide_path, submission_id)
+                            print(f"✓ Video with end slide uploaded to S3: {video_s3_key}")
+
+                    except Exception as endslide_error:
+                        print(f"⚠️  Error adding end slide: {endslide_error}")
+                        import traceback
+                        print(f"End slide error traceback: {traceback.format_exc()}")
+                        print("⚠️  Continuing with video without end slide")
+                        sentry_sdk.capture_exception(endslide_error)
+                        # Continue with original video (without end slide)
 
                     # STEP 7: Merge audio with video now that both exist
                     print("\n" + "=" * 80)
@@ -1605,8 +1672,8 @@ def invoke(payload, context):
                                 music_name = os.path.basename(selected_music)
                                 print(f"🎵 Selected background music: {music_name}")
 
-                                # Merge video, voice, and background music
-                                print(f"→ Merging video (with end slide), voice, and background music with FFmpeg...")
+                                # Merge video (already has end slide), voice, and background music
+                                print(f"→ Merging video with end slide, voice, and background music with FFmpeg...")
                                 merge_audio_video_with_music(
                                     video_path,
                                     audio_path,
@@ -1619,7 +1686,7 @@ def invoke(payload, context):
                             else:
                                 # No background music available, merge without it
                                 print(f"⚠️  No background music files found in {music_dir}")
-                                print(f"→ Merging video (with end slide) and voice only...")
+                                print(f"→ Merging video with end slide and voice only...")
                                 merge_audio_video_with_ffmpeg(video_path, audio_path, merged_video_path)
                                 print(f"✓ Audio and video merged (size: {os.path.getsize(merged_video_path)} bytes)")
 
